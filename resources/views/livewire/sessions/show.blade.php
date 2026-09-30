@@ -95,7 +95,7 @@
                 @php($currentTeamA = $currentGame->gamePlayers->where('team', 'A'))
                 @php($currentTeamB = $currentGame->gamePlayers->where('team', 'B'))
                 <article class='match-card match-card--playing'>
-                    <header><span>Game {{ $currentGame->game_number }}</span><span class='live-indicator'>Berlangsung</span></header>
+                    <header><span>Game {{ $currentGame->game_number }} · {{ $currentGame->formatLabel() }}</span><span class='live-indicator'>Berlangsung</span></header>
                     <div class='match-versus'>
                         <div><small>Tim A</small><strong>{{ $currentTeamA->pluck('member.name')->join(' & ') }}</strong></div>
                         <span>VS</span>
@@ -126,6 +126,7 @@
                                 <strong>{{ $waitingTeamA->pluck('member.name')->join(' & ') }}</strong>
                                 <span>vs</span>
                                 <strong>{{ $waitingTeamB->pluck('member.name')->join(' & ') }}</strong>
+                                <small>{{ $game->formatLabel() }}</small>
                             </div>
                             <div class='waiting-game-actions'>
                                 <button type='button' wire:click='openEditGameForm({{ $game->id }})'>Ubah</button>
@@ -150,7 +151,7 @@
                     <article wire:key='completed-game-{{ $game->id }}'>
                         <div class='history-number'><span>Game</span><strong>{{ $game->game_number }}</strong></div>
                         <div class='history-team {{ $game->winner_team === 'A' ? 'is-winner' : '' }}'><small>Tim A {{ $game->winner_team === 'A' ? '&middot; Menang' : '' }}</small><strong>{{ $historyTeamA->pluck('member.name')->join(' & ') }}</strong></div>
-                        <div class='history-score'>{{ $game->team_a_score !== null ? $game->team_a_score : '-' }}<span>:</span>{{ $game->team_b_score !== null ? $game->team_b_score : '-' }}</div>
+                        <div class='history-score'><strong>{{ $game->scoreSummary() }}</strong><small>{{ $game->resultLabel() }}</small></div>
                         <div class='history-team {{ $game->winner_team === 'B' ? 'is-winner' : '' }}'><small>Tim B {{ $game->winner_team === 'B' ? '&middot; Menang' : '' }}</small><strong>{{ $historyTeamB->pluck('member.name')->join(' & ') }}</strong></div>
                         <div class='history-meta'><span>{{ $game->completed_at?->translatedFormat('H:i') }}</span><div><button type='button' wire:click='openEditGameForm({{ $game->id }})'>Pemain</button><button type='button' wire:click='openResultForm({{ $game->id }})'>Hasil</button></div></div>
                     </article>
@@ -228,6 +229,15 @@
                     <div class='match-preview'>
                         <strong>{{ $previewA ?: 'Pemain Tim A' }}</strong><span>VS</span><strong>{{ $previewB ?: 'Pemain Tim B' }}</strong>
                     </div>
+                    @if (! $editingGameId)
+                        <fieldset class='game-format-options'>
+                            <legend>Format game</legend>
+                            <label><input type='radio' wire:model='gameFormat' value='{{ \App\Models\Game::FORMAT_ROTATION }}'><span><strong>Rotasi cepat</strong><small>2 set × 11, tanpa rubber dan dapat berakhir seri</small></span></label>
+                            <label><input type='radio' wire:model='gameFormat' value='{{ \App\Models\Game::FORMAT_BEST_OF_THREE }}'><span><strong>Normal</strong><small>Best of 3 × 21, set ketiga hanya saat 1–1</small></span></label>
+                        </fieldset>
+                    @else
+                        <div class='game-format-summary'><span>Format game</span><strong>{{ match ($gameFormat) { \App\Models\Game::FORMAT_ROTATION => '2 set × 11 (tanpa rubber)', \App\Models\Game::FORMAT_BEST_OF_THREE => 'Best of 3 × 21', default => '1 set (data lama)' } }}</strong></div>
+                    @endif
                     <div class='team-picker-grid'>
                         @foreach (['A' => 'teamA', 'B' => 'teamB'] as $team => $model)
                             <fieldset class='team-picker team-picker--{{ strtolower($team) }}'>
@@ -251,6 +261,7 @@
                     @error('teamA.*') <small class='field-error'>{{ $message }}</small> @enderror
                     @error('teamB') <small class='field-error'>{{ $message }}</small> @enderror
                     @error('teamB.*') <small class='field-error'>{{ $message }}</small> @enderror
+                    @error('gameFormat') <small class='field-error'>{{ $message }}</small> @enderror
                     <div class='modal-actions'>
                         <button class='cancel-action' type='button' wire:click='closeGameForm'>Batal</button>
                         <button class='primary-action' type='submit'>{{ $editingGameId ? 'Simpan Koreksi' : 'Tambahkan ke Antrean' }}</button>
@@ -260,26 +271,42 @@
         </div>
     @endif
 
-    @if ($resultGameId)
+    @if ($resultGameId && $resultGame)
         <div class='member-modal-backdrop' wire:click.self='closeResultForm'>
             <section class='member-modal result-modal' role='dialog' aria-modal='true' aria-labelledby='result-form-title'>
                 <header>
-                    <div><p class='eyebrow'>HASIL GAME</p><h2 id='result-form-title'>Pilih Pemenang</h2></div>
+                    <div><p class='eyebrow'>HASIL GAME {{ $resultGame->game_number }}</p><h2 id='result-form-title'>{{ $resultGame->game_format === \App\Models\Game::FORMAT_SINGLE_SET ? 'Pilih Pemenang' : 'Catat Skor per Set' }}</h2></div>
                     <button class='modal-close' type='button' wire:click='closeResultForm' aria-label='Tutup formulir'>&times;</button>
                 </header>
                 <form wire:submit='saveResult'>
-                    <fieldset class='winner-options'>
-                        <legend>Tim pemenang</legend>
-                        <label><input type='radio' wire:model='winnerTeam' value='A'><span><strong>Tim A</strong><small>Pemenang game</small></span></label>
-                        <label><input type='radio' wire:model='winnerTeam' value='B'><span><strong>Tim B</strong><small>Pemenang game</small></span></label>
-                    </fieldset>
-                    @error('winnerTeam') <small class='field-error'>{{ $message }}</small> @enderror
-                    <div class='score-fields'>
-                        <label class='member-field'><span>Skor Tim A <small>Opsional</small></span><input type='number' min='0' max='999' wire:model='teamAScore'></label>
-                        <label class='member-field'><span>Skor Tim B <small>Opsional</small></span><input type='number' min='0' max='999' wire:model='teamBScore'></label>
-                    </div>
-                    @error('teamAScore') <small class='field-error'>{{ $message }}</small> @enderror
-                    @error('teamBScore') <small class='field-error'>{{ $message }}</small> @enderror
+                    <div class='game-format-summary'><span>Format</span><strong>{{ $resultGame->formatLabel() }}</strong></div>
+                    @if ($resultGame->game_format === \App\Models\Game::FORMAT_SINGLE_SET)
+                        <fieldset class='winner-options'>
+                            <legend>Tim pemenang</legend>
+                            <label><input type='radio' wire:model='winnerTeam' value='A'><span><strong>Tim A</strong><small>Pemenang game</small></span></label>
+                            <label><input type='radio' wire:model='winnerTeam' value='B'><span><strong>Tim B</strong><small>Pemenang game</small></span></label>
+                        </fieldset>
+                        @error('winnerTeam') <small class='field-error'>{{ $message }}</small> @enderror
+                        <div class='score-fields'>
+                            <label class='member-field'><span>Skor Tim A <small>Opsional</small></span><input type='number' min='0' max='999' wire:model='teamAScore'></label>
+                            <label class='member-field'><span>Skor Tim B <small>Opsional</small></span><input type='number' min='0' max='999' wire:model='teamBScore'></label>
+                        </div>
+                        @error('teamAScore') <small class='field-error'>{{ $message }}</small> @enderror
+                        @error('teamBScore') <small class='field-error'>{{ $message }}</small> @enderror
+                    @else
+                        <div class='set-score-list'>
+                            @foreach ($setScores as $index => $setScore)
+                                <fieldset class='set-score-row' wire:key='set-score-{{ $index }}'>
+                                    <legend>Set {{ $index + 1 }} {{ $resultGame->game_format === \App\Models\Game::FORMAT_BEST_OF_THREE && $index === 2 ? '· Rubber bila 1–1' : '' }}</legend>
+                                    <label class='member-field'><span>Tim A</span><input type='number' min='0' max='99' wire:model='setScores.{{ $index }}.team_a_score' placeholder='0'></label>
+                                    <span>:</span>
+                                    <label class='member-field'><span>Tim B</span><input type='number' min='0' max='99' wire:model='setScores.{{ $index }}.team_b_score' placeholder='0'></label>
+                                    @error('setScores.'.$index.'.team_a_score') <small class='field-error'>{{ $message }}</small> @enderror
+                                    @error('setScores.'.$index.'.team_b_score') <small class='field-error'>{{ $message }}</small> @enderror
+                                </fieldset>
+                            @endforeach
+                        </div>
+                    @endif
                     @error('result') <small class='field-error'>{{ $message }}</small> @enderror
                     <div class='modal-actions'>
                         <button class='cancel-action' type='button' wire:click='closeResultForm'>Batal</button>

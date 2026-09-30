@@ -31,6 +31,8 @@ class Show extends Component
     /** @var array<int, int|string> */
     public array $teamB = ['', ''];
 
+    public string $gameFormat = Game::FORMAT_BEST_OF_THREE;
+
     public ?int $resultGameId = null;
 
     public string $winnerTeam = '';
@@ -38,6 +40,9 @@ class Show extends Component
     public int|string $teamAScore = '';
 
     public int|string $teamBScore = '';
+
+    /** @var array<int, array{team_a_score: int|string, team_b_score: int|string}> */
+    public array $setScores = [];
 
     public function mount(PlaySession $playSession): void
     {
@@ -206,6 +211,11 @@ class Show extends Component
     public function openCreateGameForm(): void
     {
         $this->resetGameForm();
+        $this->gameFormat = PlaySessionMember::query()
+            ->where('play_session_id', $this->sessionId)
+            ->count() >= 16
+                ? Game::FORMAT_ROTATION
+                : Game::FORMAT_BEST_OF_THREE;
         $this->showGameForm = true;
     }
 
@@ -217,6 +227,7 @@ class Show extends Component
         $this->editingGameId = $game->id;
         $this->teamA = $players->where('team', 'A')->pluck('member_id')->values()->all();
         $this->teamB = $players->where('team', 'B')->pluck('member_id')->values()->all();
+        $this->gameFormat = $game->game_format;
         $this->showGameForm = true;
         $this->resetErrorBag('game');
     }
@@ -248,6 +259,8 @@ class Show extends Component
                     'play_session_id' => $session->id,
                     'game_number' => ((int) Game::query()->where('play_session_id', $session->id)->max('game_number')) + 1,
                     'status' => 'waiting',
+                    'game_format' => $this->gameFormat,
+                    'point_target' => $this->gameFormat === Game::FORMAT_ROTATION ? 11 : 21,
                 ])
                 : Game::query()
                     ->where('play_session_id', $session->id)
@@ -350,7 +363,7 @@ class Show extends Component
 
     public function openResultForm(int $gameId): void
     {
-        $game = $this->sessionGame($gameId);
+        $game = $this->sessionGame($gameId)->load('gameSets');
 
         if (! in_array($game->status, ['playing', 'completed'], true)) {
             $this->addError('game', 'Hasil hanya dapat diisi untuk game yang sedang bermain atau sudah selesai.');
@@ -362,6 +375,18 @@ class Show extends Component
         $this->winnerTeam = $game->winner_team ?? '';
         $this->teamAScore = $game->team_a_score ?? '';
         $this->teamBScore = $game->team_b_score ?? '';
+        $setCount = $game->game_format === Game::FORMAT_BEST_OF_THREE ? 3 : ($game->game_format === Game::FORMAT_ROTATION ? 2 : 1);
+        $setsByNumber = $game->gameSets->keyBy('set_number');
+        $this->setScores = collect(range(1, $setCount))
+            ->map(function (int $setNumber) use ($setsByNumber): array {
+                $set = $setsByNumber->get($setNumber);
+
+                return [
+                    'team_a_score' => $set?->team_a_score ?? '',
+                    'team_b_score' => $set?->team_b_score ?? '',
+                ];
+            })
+            ->all();
         $this->resetErrorBag('result');
     }
 
@@ -372,17 +397,6 @@ class Show extends Component
 
     public function saveResult(): void
     {
-        $validated = $this->validate([
-            'winnerTeam' => ['required', 'in:A,B'],
-            'teamAScore' => ['nullable', 'integer', 'min:0', 'max:999'],
-            'teamBScore' => ['nullable', 'integer', 'min:0', 'max:999'],
-        ], [
-            'winnerTeam.required' => 'Pilih Tim A atau Tim B sebagai pemenang.',
-            'winnerTeam.in' => 'Pilihan pemenang tidak valid.',
-            'teamAScore.integer' => 'Skor Tim A harus berupa angka.',
-            'teamBScore.integer' => 'Skor Tim B harus berupa angka.',
-        ]);
-
         $game = $this->sessionGame($this->resultGameId ?? 0);
 
         if (! in_array($game->status, ['playing', 'completed'], true)) {
@@ -391,14 +405,39 @@ class Show extends Component
             return;
         }
 
+        if ($game->game_format === Game::FORMAT_SINGLE_SET) {
+            $this->saveLegacyResult($game);
+
+            return;
+        }
+
+        $result = $this->validatedSetResult($game);
+
+        if ($result === null) {
+            return;
+        }
+
         $wasCompleted = $game->status === 'completed';
-        $game->update([
-            'status' => 'completed',
-            'winner_team' => $validated['winnerTeam'],
-            'team_a_score' => $validated['teamAScore'] === '' ? null : $validated['teamAScore'],
-            'team_b_score' => $validated['teamBScore'] === '' ? null : $validated['teamBScore'],
-            'completed_at' => $game->completed_at ?? now(),
-        ]);
+        DB::transaction(function () use ($game, $result): void {
+            $game->gameSets()->delete();
+
+            foreach ($result['sets'] as $index => $set) {
+                $game->gameSets()->create([
+                    'set_number' => $index + 1,
+                    'team_a_score' => $set['team_a_score'],
+                    'team_b_score' => $set['team_b_score'],
+                    'winner_team' => $set['winner_team'],
+                ]);
+            }
+
+            $game->update([
+                'status' => 'completed',
+                'winner_team' => $result['winner_team'],
+                'team_a_score' => null,
+                'team_b_score' => null,
+                'completed_at' => $game->completed_at ?? now(),
+            ]);
+        });
 
         session()->flash(
             'session-message',
@@ -477,6 +516,7 @@ class Show extends Component
             'teamA.*' => ['required', 'integer'],
             'teamB' => ['required', 'array', 'size:2'],
             'teamB.*' => ['required', 'integer'],
+            'gameFormat' => ['required', 'in:'.Game::FORMAT_ROTATION.','.Game::FORMAT_BEST_OF_THREE.','.Game::FORMAT_SINGLE_SET],
         ], [
             'teamA.size' => 'Tim A harus berisi tepat dua pemain.',
             'teamB.size' => 'Tim B harus berisi tepat dua pemain.',
@@ -507,14 +547,160 @@ class Show extends Component
         return $playerIds;
     }
 
+    private function saveLegacyResult(Game $game): void
+    {
+        $validated = $this->validate([
+            'winnerTeam' => ['required', 'in:A,B'],
+            'teamAScore' => ['nullable', 'integer', 'min:0', 'max:999'],
+            'teamBScore' => ['nullable', 'integer', 'min:0', 'max:999'],
+        ], [
+            'winnerTeam.required' => 'Pilih Tim A atau Tim B sebagai pemenang.',
+            'winnerTeam.in' => 'Pilihan pemenang tidak valid.',
+            'teamAScore.integer' => 'Skor Tim A harus berupa angka.',
+            'teamBScore.integer' => 'Skor Tim B harus berupa angka.',
+        ]);
+        $wasCompleted = $game->status === 'completed';
+        $teamAScore = $validated['teamAScore'] === '' ? null : $validated['teamAScore'];
+        $teamBScore = $validated['teamBScore'] === '' ? null : $validated['teamBScore'];
+
+        DB::transaction(function () use ($game, $validated, $teamAScore, $teamBScore): void {
+            $game->gameSets()->delete();
+
+            if ($teamAScore !== null && $teamBScore !== null) {
+                $game->gameSets()->create([
+                    'set_number' => 1,
+                    'team_a_score' => $teamAScore,
+                    'team_b_score' => $teamBScore,
+                    'winner_team' => $validated['winnerTeam'],
+                ]);
+            }
+
+            $game->update([
+                'status' => 'completed',
+                'winner_team' => $validated['winnerTeam'],
+                'team_a_score' => $teamAScore,
+                'team_b_score' => $teamBScore,
+                'completed_at' => $game->completed_at ?? now(),
+            ]);
+        });
+
+        session()->flash(
+            'session-message',
+            $wasCompleted ? 'Hasil game berhasil dikoreksi.' : 'Game selesai dan hasil berhasil disimpan.',
+        );
+        $this->resetResultForm();
+    }
+
+    /**
+     * @return array{
+     *   sets: array<int, array{team_a_score: int, team_b_score: int, winner_team: string}>,
+     *   winner_team: string|null
+     * }|null
+     */
+    private function validatedSetResult(Game $game): ?array
+    {
+        $this->resetErrorBag('result');
+        $this->validate([
+            'setScores' => ['required', 'array'],
+            'setScores.*.team_a_score' => ['nullable', 'integer', 'min:0', 'max:99'],
+            'setScores.*.team_b_score' => ['nullable', 'integer', 'min:0', 'max:99'],
+        ], [
+            'setScores.*.team_a_score.integer' => 'Skor Tim A harus berupa angka.',
+            'setScores.*.team_b_score.integer' => 'Skor Tim B harus berupa angka.',
+            'setScores.*.team_a_score.max' => 'Skor maksimal adalah 99.',
+            'setScores.*.team_b_score.max' => 'Skor maksimal adalah 99.',
+        ]);
+
+        $maximumSets = $game->game_format === Game::FORMAT_ROTATION ? 2 : 3;
+        $sets = [];
+
+        for ($index = 0; $index < $maximumSets; $index++) {
+            $teamA = $this->setScores[$index]['team_a_score'] ?? '';
+            $teamB = $this->setScores[$index]['team_b_score'] ?? '';
+            $teamAIsEmpty = $teamA === '' || $teamA === null;
+            $teamBIsEmpty = $teamB === '' || $teamB === null;
+
+            if ($teamAIsEmpty && $teamBIsEmpty) {
+                if ($index < 2) {
+                    $this->addError('setScores.'.$index.'.team_a_score', 'Skor set '.($index + 1).' wajib diisi.');
+
+                    return null;
+                }
+
+                continue;
+            }
+
+            if ($teamAIsEmpty || $teamBIsEmpty) {
+                $this->addError('setScores.'.$index.'.team_a_score', 'Skor kedua tim pada set '.($index + 1).' harus diisi.');
+
+                return null;
+            }
+
+            $teamA = (int) $teamA;
+            $teamB = (int) $teamB;
+
+            if ($teamA === $teamB) {
+                $this->addError('setScores.'.$index.'.team_a_score', 'Skor set '.($index + 1).' tidak boleh seri.');
+
+                return null;
+            }
+
+            if (max($teamA, $teamB) < $game->point_target) {
+                $this->addError(
+                    'setScores.'.$index.'.team_a_score',
+                    'Pemenang set '.($index + 1).' minimal mencapai '.$game->point_target.' poin.',
+                );
+
+                return null;
+            }
+
+            $sets[] = [
+                'team_a_score' => $teamA,
+                'team_b_score' => $teamB,
+                'winner_team' => $teamA > $teamB ? 'A' : 'B',
+            ];
+        }
+
+        if (count($sets) < 2) {
+            $this->addError('result', 'Skor set 1 dan set 2 wajib diisi.');
+
+            return null;
+        }
+
+        $teamAWins = collect($sets)->where('winner_team', 'A')->count();
+        $teamBWins = collect($sets)->where('winner_team', 'B')->count();
+
+        if ($game->game_format === Game::FORMAT_BEST_OF_THREE) {
+            $needsRubberSet = $sets[0]['winner_team'] !== $sets[1]['winner_team'];
+
+            if ($needsRubberSet && count($sets) !== 3) {
+                $this->addError('result', 'Set 3 wajib diisi karena hasil dua set pertama imbang 1–1.');
+
+                return null;
+            }
+
+            if (! $needsRubberSet && count($sets) === 3) {
+                $this->addError('result', 'Set 3 tidak diperlukan karena salah satu tim sudah menang 2–0.');
+
+                return null;
+            }
+        }
+
+        return [
+            'sets' => $sets,
+            'winner_team' => $teamAWins === $teamBWins ? null : ($teamAWins > $teamBWins ? 'A' : 'B'),
+        ];
+    }
+
     private function resetGameForm(): void
     {
         $this->showGameForm = false;
         $this->editingGameId = null;
         $this->teamA = ['', ''];
         $this->teamB = ['', ''];
+        $this->gameFormat = Game::FORMAT_BEST_OF_THREE;
         $this->resetErrorBag('game');
-        $this->resetValidation(['teamA', 'teamB']);
+        $this->resetValidation(['teamA', 'teamB', 'gameFormat']);
     }
 
     private function resetResultForm(): void
@@ -523,8 +709,9 @@ class Show extends Component
         $this->winnerTeam = '';
         $this->teamAScore = '';
         $this->teamBScore = '';
+        $this->setScores = [];
         $this->resetErrorBag('result');
-        $this->resetValidation(['winnerTeam', 'teamAScore', 'teamBScore']);
+        $this->resetValidation(['winnerTeam', 'teamAScore', 'teamBScore', 'setScores']);
     }
 
     public function render(): View
@@ -538,7 +725,10 @@ class Show extends Component
             ->orderBy('attended_at')
             ->get();
         $games = Game::query()
-            ->with(['gamePlayers' => fn ($query) => $query->with('member')->orderBy('team')->orderBy('slot')])
+            ->with([
+                'gamePlayers' => fn ($query) => $query->with('member')->orderBy('team')->orderBy('slot'),
+                'gameSets',
+            ])
             ->where('play_session_id', $session->id)
             ->orderBy('game_number')
             ->get();
@@ -571,6 +761,7 @@ class Show extends Component
             'currentGame' => $games->firstWhere('status', 'playing'),
             'waitingGames' => $games->where('status', 'waiting')->values(),
             'completedGames' => $games->where('status', 'completed')->sortByDesc('game_number')->values(),
+            'resultGame' => $this->resultGameId ? $games->firstWhere('id', $this->resultGameId) : null,
             'playingPlayers' => $this->playersIn($playerRows, $playingIds),
             'waitingPlayers' => $this->playersIn($playerRows, $waitingIds->diff($playingIds)),
             'unplayedPlayers' => $playerRows->filter(fn (array $row): bool => $row['completed_games'] === 0

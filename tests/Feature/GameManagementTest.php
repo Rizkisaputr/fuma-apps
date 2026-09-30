@@ -119,9 +119,11 @@ class GameManagementTest extends TestCase
         $this->assertSame(0, $this->completedGameCount($members[0], $session));
 
         $component->call('openResultForm', $game->id)
-            ->set('winnerTeam', 'A')
-            ->set('teamAScore', 21)
-            ->set('teamBScore', 17)
+            ->set('setScores', [
+                ['team_a_score' => 21, 'team_b_score' => 17],
+                ['team_a_score' => 21, 'team_b_score' => 15],
+                ['team_a_score' => '', 'team_b_score' => ''],
+            ])
             ->call('saveResult')
             ->assertHasNoErrors();
 
@@ -129,9 +131,11 @@ class GameManagementTest extends TestCase
             'id' => $game->id,
             'status' => 'completed',
             'winner_team' => 'A',
-            'team_a_score' => 21,
-            'team_b_score' => 17,
+            'team_a_score' => null,
+            'team_b_score' => null,
         ]);
+        $this->assertDatabaseHas('game_sets', ['game_id' => $game->id, 'set_number' => 1, 'team_a_score' => 21, 'team_b_score' => 17, 'winner_team' => 'A']);
+        $this->assertDatabaseHas('game_sets', ['game_id' => $game->id, 'set_number' => 2, 'team_a_score' => 21, 'team_b_score' => 15, 'winner_team' => 'A']);
         $this->assertNotNull($game->refresh()->completed_at);
         $this->assertSame(1, $this->completedGameCount($members[0], $session));
         $this->assertSame(0, $this->completedGameCount($members[4], $session));
@@ -145,7 +149,11 @@ class GameManagementTest extends TestCase
         $game = Game::query()->firstOrFail();
         $component->call('startGame', $game->id)
             ->call('openResultForm', $game->id)
-            ->set('winnerTeam', 'A')
+            ->set('setScores', [
+                ['team_a_score' => 21, 'team_b_score' => 16],
+                ['team_a_score' => 21, 'team_b_score' => 18],
+                ['team_a_score' => '', 'team_b_score' => ''],
+            ])
             ->call('saveResult');
 
         $component->call('openEditGameForm', $game->id)
@@ -154,9 +162,11 @@ class GameManagementTest extends TestCase
             ->call('saveGame')
             ->assertHasNoErrors('game');
         $component->call('openResultForm', $game->id)
-            ->set('winnerTeam', 'B')
-            ->set('teamAScore', '')
-            ->set('teamBScore', '')
+            ->set('setScores', [
+                ['team_a_score' => 15, 'team_b_score' => 21],
+                ['team_a_score' => 18, 'team_b_score' => 21],
+                ['team_a_score' => '', 'team_b_score' => ''],
+            ])
             ->call('saveResult')
             ->assertHasNoErrors();
 
@@ -168,6 +178,56 @@ class GameManagementTest extends TestCase
             'team_a_score' => null,
             'team_b_score' => null,
         ]);
+        $this->assertDatabaseCount('game_sets', 2);
+    }
+
+    public function test_sixteen_attendees_default_to_two_sets_of_eleven_and_may_draw(): void
+    {
+        [$session, $members] = $this->sessionWithAttendees(16);
+        $component = $this->sessionComponent($session);
+        $this->saveGame($component, array_slice($members, 0, 4));
+        $game = Game::query()->firstOrFail();
+
+        $this->assertSame(Game::FORMAT_ROTATION, $game->game_format);
+        $this->assertSame(11, $game->point_target);
+
+        $component->call('startGame', $game->id)
+            ->call('openResultForm', $game->id)
+            ->set('setScores', [
+                ['team_a_score' => 11, 'team_b_score' => 7],
+                ['team_a_score' => 8, 'team_b_score' => 11],
+            ])
+            ->call('saveResult')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('games', ['id' => $game->id, 'status' => 'completed', 'winner_team' => null]);
+        $this->assertDatabaseCount('game_sets', 2);
+        $this->assertSame(1, $this->completedGameCount($members[0], $session));
+    }
+
+    public function test_best_of_three_requires_a_rubber_set_only_after_one_all(): void
+    {
+        [$session, $members] = $this->sessionWithAttendees(8);
+        $component = $this->sessionComponent($session);
+        $this->saveGame($component, array_slice($members, 0, 4));
+        $game = Game::query()->firstOrFail();
+
+        $component->call('startGame', $game->id)
+            ->call('openResultForm', $game->id)
+            ->set('setScores', [
+                ['team_a_score' => 21, 'team_b_score' => 15],
+                ['team_a_score' => 17, 'team_b_score' => 21],
+                ['team_a_score' => '', 'team_b_score' => ''],
+            ])
+            ->call('saveResult')
+            ->assertHasErrors('result')
+            ->set('setScores.2.team_a_score', 21)
+            ->set('setScores.2.team_b_score', 19)
+            ->call('saveResult')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('games', ['id' => $game->id, 'winner_team' => 'A']);
+        $this->assertDatabaseCount('game_sets', 3);
     }
 
     public function test_unplayed_list_contains_attendee_with_zero_completed_games(): void

@@ -92,7 +92,10 @@ class ReportService
                 'sessionMembers.member',
                 'cashTransactions.cashCategory',
                 'games' => fn ($query) => $query
-                    ->with(['gamePlayers' => fn ($playerQuery) => $playerQuery->with('member')->orderBy('team')->orderBy('slot')])
+                    ->with([
+                        'gamePlayers' => fn ($playerQuery) => $playerQuery->with('member')->orderBy('team')->orderBy('slot'),
+                        'gameSets',
+                    ])
                     ->orderBy('game_number'),
             ])
             ->whereDate('play_date', '>=', $from)

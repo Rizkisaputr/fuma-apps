@@ -123,8 +123,8 @@ class ReportExportController extends Controller
                 $games->setCellValue("B{$row}", $game->game_number);
                 $games->setCellValue("C{$row}", $teamA);
                 $games->setCellValue("D{$row}", $teamB);
-                $games->setCellValue("E{$row}", $game->winner_team ? 'Tim '.$game->winner_team : '');
-                $games->setCellValueExplicit("F{$row}", $game->team_a_score !== null ? $game->team_a_score.' - '.$game->team_b_score : '', DataType::TYPE_STRING);
+                $games->setCellValue("E{$row}", $game->resultLabel());
+                $games->setCellValueExplicit("F{$row}", $game->scoreSummary(), DataType::TYPE_STRING);
                 $games->setCellValue("G{$row}", ucfirst($game->status));
                 $row++;
             }
