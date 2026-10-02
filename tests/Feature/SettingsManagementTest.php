@@ -101,12 +101,19 @@ class SettingsManagementTest extends TestCase
         $settings = ApplicationSetting::current();
         $this->assertSame('Klub Juvi', $settings->app_name);
         Storage::disk('public')->assertExists($settings->logo_path);
+        $logoUrl = Storage::disk('public')->url($settings->logo_path);
 
         auth()->logout();
         $this->get('/login')
             ->assertOk()
             ->assertSee('Klub Juvi')
-            ->assertSee(Storage::disk('public')->url($settings->logo_path), false);
+            ->assertSee("<link rel='icon' href='{$logoUrl}'>", false);
+
+        $this->actingAs($admin)
+            ->get('/')
+            ->assertOk()
+            ->assertSee('<title>Dashboard · Klub Juvi</title>', false)
+            ->assertSee("<link rel='icon' href='{$logoUrl}'>", false);
     }
 
     public function test_admin_account_requires_current_password_before_updating(): void

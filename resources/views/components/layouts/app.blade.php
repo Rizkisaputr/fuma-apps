@@ -18,6 +18,8 @@
     <meta name='viewport' content='width=device-width, initial-scale=1'>
     <meta name='theme-color' content='#123c2c'>
     <title>{{ $title }} · {{ $appSettings->app_name }}</title>
+    <link rel='icon' href='{{ $appSettings->logoUrl() }}'>
+    <link rel='apple-touch-icon' href='{{ $appSettings->logoUrl() }}'>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
 </head>

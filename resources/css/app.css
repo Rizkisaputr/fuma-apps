@@ -504,19 +504,18 @@ a { color: inherit; text-decoration: none; }
 
 @media (max-width: 900px) {
     .sidebar { display: none; }
-    .mobile-shell { position: sticky; z-index: 30; top: 0; display: block; color: var(--cream-50); background: var(--green-950); box-shadow: 0 8px 28px rgba(11, 42, 32, .18); }
-    .mobile-header { display: flex; min-height: 4.25rem; align-items: center; justify-content: space-between; padding: .65rem 1rem; }
+    .mobile-shell { display: block; color: var(--cream-50); }
+    .mobile-header { position: sticky; z-index: 30; top: 0; display: flex; min-height: 4.25rem; align-items: center; justify-content: space-between; padding: .65rem 1rem; background: var(--green-950); box-shadow: 0 8px 28px rgba(11, 42, 32, .18); }
     .mobile-brand { display: flex; min-width: 0; align-items: center; gap: .6rem; font-family: Georgia, serif; letter-spacing: .05em; }
     .mobile-brand .app-brand-copy { display: grid; line-height: 1.05; }
     .mobile-brand .app-brand-copy small { margin-top: .25rem; color: inherit; font-family: Georgia, serif; font-size: .52rem; font-weight: 800; letter-spacing: .045em; white-space: nowrap; }
     .mobile-brand .brand-mark { width: 2.25rem; height: 2.25rem; font-size: 1.1rem; }
     .mobile-logout { min-height: 2.75rem; padding: .45rem .8rem; border: 1px solid rgba(255, 255, 255, .16); border-radius: .65rem; color: rgba(255, 255, 255, .78); background: transparent; font-size: .82rem; font-weight: 700; }
-    .mobile-nav { display: flex; overflow-x: auto; gap: .25rem; padding: .15rem .75rem .7rem; scrollbar-width: none; }
-    .mobile-nav::-webkit-scrollbar { display: none; }
-    .mobile-nav-link { display: flex; min-width: max-content; min-height: 2.8rem; align-items: center; gap: .45rem; padding: .5rem .72rem; border-radius: .6rem; color: rgba(255, 255, 255, .6); font-size: .78rem; font-weight: 750; }
-    .mobile-nav-link svg { width: 1rem; height: 1rem; }
+    .mobile-nav { position: fixed; z-index: 40; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .2rem; padding: .45rem .45rem max(.45rem, env(safe-area-inset-bottom)); background: var(--green-950); box-shadow: 0 -8px 28px rgba(11, 42, 32, .18); }
+    .mobile-nav-link { display: flex; min-width: 0; min-height: 3.4rem; align-items: center; justify-content: center; flex-direction: column; gap: .2rem; padding: .35rem .15rem; border-radius: .6rem; color: rgba(255, 255, 255, .6); font-size: .64rem; font-weight: 750; line-height: 1.1; text-align: center; }
+    .mobile-nav-link svg { width: 1.15rem; height: 1.15rem; }
     .mobile-nav-link.is-active { color: var(--green-950); background: var(--gold-300); }
-    .app-main { margin-left: 0; padding: 2rem 1rem 3rem; }
+    .app-main { margin-left: 0; padding: 2rem 1rem calc(6rem + env(safe-area-inset-bottom)); }
     .page-header { align-items: flex-start; }
     .date-pill { display: none; }
     .welcome-monogram { position: absolute; right: -1rem; opacity: .7; }
