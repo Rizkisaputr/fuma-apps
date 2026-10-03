@@ -24,6 +24,7 @@ class GameManagementTest extends TestCase
 
         Livewire::actingAs(User::factory()->create())
             ->test(Show::class, ['playSession' => $session])
+            ->set('gameFormat', Game::FORMAT_BEST_OF_THREE)
             ->set('teamA', [$members[0]->id, $members[1]->id])
             ->set('teamB', [$members[2]->id])
             ->call('saveGame')
@@ -39,6 +40,7 @@ class GameManagementTest extends TestCase
 
         Livewire::actingAs(User::factory()->create())
             ->test(Show::class, ['playSession' => $session])
+            ->set('gameFormat', Game::FORMAT_BEST_OF_THREE)
             ->set('teamA', [$members[0]->id, $members[1]->id])
             ->set('teamB', [$members[2]->id, $outsider->id])
             ->call('saveGame')
@@ -53,6 +55,7 @@ class GameManagementTest extends TestCase
 
         Livewire::actingAs(User::factory()->create())
             ->test(Show::class, ['playSession' => $session])
+            ->set('gameFormat', Game::FORMAT_BEST_OF_THREE)
             ->set('teamA', [$members[0]->id, $members[1]->id])
             ->set('teamB', [$members[2]->id, $members[0]->id])
             ->call('saveGame')
@@ -139,6 +142,11 @@ class GameManagementTest extends TestCase
         $this->assertNotNull($game->refresh()->completed_at);
         $this->assertSame(1, $this->completedGameCount($members[0], $session));
         $this->assertSame(0, $this->completedGameCount($members[4], $session));
+
+        $component->call('openResultForm', $game->id)
+            ->assertSee('Tim A Memenangkan Game')
+            ->assertSee($members[0]->name.' & '.$members[1]->name)
+            ->assertDontSee('Set dimenangkan pada 21 poin');
     }
 
     public function test_admin_can_correct_completed_game_players_and_winner(): void
@@ -181,11 +189,11 @@ class GameManagementTest extends TestCase
         $this->assertDatabaseCount('game_sets', 2);
     }
 
-    public function test_sixteen_attendees_default_to_two_sets_of_eleven_and_may_draw(): void
+    public function test_admin_can_choose_two_sets_of_eleven_and_the_result_may_draw(): void
     {
         [$session, $members] = $this->sessionWithAttendees(16);
         $component = $this->sessionComponent($session);
-        $this->saveGame($component, array_slice($members, 0, 4));
+        $this->saveGame($component, array_slice($members, 0, 4), true, Game::FORMAT_ROTATION);
         $game = Game::query()->firstOrFail();
 
         $this->assertSame(Game::FORMAT_ROTATION, $game->game_format);
@@ -203,6 +211,25 @@ class GameManagementTest extends TestCase
         $this->assertDatabaseHas('games', ['id' => $game->id, 'status' => 'completed', 'winner_team' => null]);
         $this->assertDatabaseCount('game_sets', 2);
         $this->assertSame(1, $this->completedGameCount($members[0], $session));
+
+        $component->call('openResultForm', $game->id)
+            ->assertSee('Game Berakhir Seri');
+    }
+
+    public function test_game_format_must_be_selected_by_admin(): void
+    {
+        [$session, $members] = $this->sessionWithAttendees(8);
+        $component = $this->sessionComponent($session);
+
+        $component
+            ->call('openCreateGameForm')
+            ->assertSet('gameFormat', '')
+            ->set('teamA', [$members[0]->id, $members[1]->id])
+            ->set('teamB', [$members[2]->id, $members[3]->id])
+            ->call('saveGame')
+            ->assertHasErrors('gameFormat');
+
+        $this->assertDatabaseCount('games', 0);
     }
 
     public function test_best_of_three_requires_a_rubber_set_only_after_one_all(): void
@@ -230,6 +257,90 @@ class GameManagementTest extends TestCase
         $this->assertDatabaseCount('game_sets', 3);
     }
 
+    public function test_best_of_three_accepts_deuce_scores_up_to_thirty_points(): void
+    {
+        [$session, $members] = $this->sessionWithAttendees(8);
+        $component = $this->sessionComponent($session);
+        $this->saveGame($component, array_slice($members, 0, 4));
+        $game = Game::query()->firstOrFail();
+
+        $component->call('startGame', $game->id)
+            ->call('openResultForm', $game->id)
+            ->set('setScores', [
+                ['team_a_score' => 22, 'team_b_score' => 20],
+                ['team_a_score' => 29, 'team_b_score' => 30],
+                ['team_a_score' => 30, 'team_b_score' => 28],
+            ])
+            ->call('saveResult')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('games', ['id' => $game->id, 'winner_team' => 'A']);
+        $this->assertDatabaseCount('game_sets', 3);
+    }
+
+    public function test_one_set_format_declares_winner_after_one_set_of_twenty_one(): void
+    {
+        [$session, $members] = $this->sessionWithAttendees(8);
+        $component = $this->sessionComponent($session);
+
+        $component
+            ->call('openCreateGameForm')
+            ->set('gameFormat', Game::FORMAT_ONE_SET)
+            ->set('teamA', [$members[0]->id, $members[1]->id])
+            ->set('teamB', [$members[2]->id, $members[3]->id])
+            ->call('saveGame')
+            ->assertHasNoErrors('game');
+
+        $game = Game::query()->firstOrFail();
+        $this->assertSame(Game::FORMAT_ONE_SET, $game->game_format);
+        $this->assertSame(21, $game->point_target);
+
+        $component->call('startGame', $game->id)
+            ->call('openResultForm', $game->id)
+            ->assertSet('setScores', [
+                ['team_a_score' => '', 'team_b_score' => ''],
+            ])
+            ->set('setScores.0.team_a_score', 22)
+            ->set('setScores.0.team_b_score', 20)
+            ->call('saveResult')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('games', [
+            'id' => $game->id,
+            'status' => 'completed',
+            'winner_team' => 'A',
+        ]);
+        $this->assertDatabaseHas('game_sets', [
+            'game_id' => $game->id,
+            'set_number' => 1,
+            'team_a_score' => 22,
+            'team_b_score' => 20,
+            'winner_team' => 'A',
+        ]);
+        $this->assertDatabaseCount('game_sets', 1);
+    }
+
+    public function test_best_of_three_rejects_invalid_deuce_scores(): void
+    {
+        [$session, $members] = $this->sessionWithAttendees(8);
+        $component = $this->sessionComponent($session);
+        $this->saveGame($component, array_slice($members, 0, 4));
+        $game = Game::query()->firstOrFail();
+
+        $component->call('startGame', $game->id)
+            ->call('openResultForm', $game->id)
+            ->set('setScores', [
+                ['team_a_score' => 21, 'team_b_score' => 20],
+                ['team_a_score' => 21, 'team_b_score' => 15],
+                ['team_a_score' => '', 'team_b_score' => ''],
+            ])
+            ->call('saveResult')
+            ->assertHasErrors('setScores.0.team_a_score');
+
+        $this->assertDatabaseHas('games', ['id' => $game->id, 'status' => 'playing']);
+        $this->assertDatabaseCount('game_sets', 0);
+    }
+
     public function test_unplayed_list_contains_attendee_with_zero_completed_games(): void
     {
         [$session, $members] = $this->sessionWithAttendees(5);
@@ -253,6 +364,50 @@ class GameManagementTest extends TestCase
         $this->sessionComponent($session)
             ->assertViewHas('unplayedPlayers', fn ($players): bool => $players->pluck('member.id')->contains($members[4]->id))
             ->assertViewHas('readyPlayers', fn ($players): bool => $players->pluck('member.id')->contains($members[0]->id));
+    }
+
+    public function test_player_rotation_shows_a_simple_rest_count(): void
+    {
+        [$session, $members] = $this->sessionWithAttendees(8);
+
+        $createCompletedGame = function (int $number, array $players) use ($session): void {
+            $game = Game::query()->create([
+                'play_session_id' => $session->id,
+                'game_number' => $number,
+                'status' => 'completed',
+                'winner_team' => 'A',
+                'completed_at' => now(),
+            ]);
+
+            foreach ($players as $index => $member) {
+                GamePlayer::query()->create([
+                    'game_id' => $game->id,
+                    'member_id' => $member->id,
+                    'team' => $index < 2 ? 'A' : 'B',
+                    'slot' => ($index % 2) + 1,
+                ]);
+            }
+        };
+
+        $createCompletedGame(1, [$members[0], $members[1], $members[2], $members[3]]);
+        $createCompletedGame(2, [$members[4], $members[5], $members[6], $members[7]]);
+        $createCompletedGame(3, [$members[1], $members[2], $members[3], $members[4]]);
+        $createCompletedGame(4, [$members[0], $members[5], $members[6], $members[7]]);
+        $createCompletedGame(5, [$members[1], $members[2], $members[3], $members[4]]);
+
+        $this->sessionComponent($session)
+            ->assertViewHas('readyPlayers', function ($players) use ($members): bool {
+                $row = $players->first(fn (array $player): bool => $player['member']->is($members[0]));
+
+                return $row['completed_games'] === 2
+                    && $row['last_game_number'] === 4
+                    && $row['rested_games'] === 1;
+            })
+            ->assertSee('2× main · terakhir Game 4')
+            ->assertSee('1 game')
+            ->assertSee('Sudah di-skip')
+            ->call('openCreateGameForm')
+            ->assertSeeHtml($members[0]->name.' &mdash; '.ucfirst($members[0]->skill_level));
     }
 
     /** @return array{PlaySession, array<int, Member>} */
@@ -285,10 +440,15 @@ class GameManagementTest extends TestCase
     }
 
     /** @param array<int, Member> $members */
-    private function saveGame(Testable $component, array $members, bool $assertSuccess = true): Testable
-    {
+    private function saveGame(
+        Testable $component,
+        array $members,
+        bool $assertSuccess = true,
+        string $format = Game::FORMAT_BEST_OF_THREE,
+    ): Testable {
         $component
             ->call('openCreateGameForm')
+            ->set('gameFormat', $format)
             ->set('teamA', [$members[0]->id, $members[1]->id])
             ->set('teamB', [$members[2]->id, $members[3]->id])
             ->call('saveGame');

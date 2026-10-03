@@ -1,6 +1,6 @@
 <div>
     <header class='page-header settings-page-header'>
-        <div><p class='eyebrow'>KONFIGURASI</p><h1>Pengaturan</h1><p>Kelola identitas aplikasi, default sesi, kategori kas, dan akun administrator.</p></div>
+        <div><p class='eyebrow'>KONFIGURASI</p><h1>Pengaturan</h1><p>Kelola identitas aplikasi, default sesi, dan kategori kas.</p></div>
     </header>
 
     @if (session('settings-message'))
@@ -49,20 +49,6 @@
                     @endforeach
                 </div>
                 <div class='settings-actions'><button class='primary-action' type='submit'>Simpan Kategori</button></div>
-            </form>
-        </section>
-
-        <section class='settings-panel settings-panel--wide'>
-            <header><div><p class='eyebrow'>AKUN ADMIN</p><h2>Profil dan Keamanan</h2></div></header>
-            <form wire:submit='saveAdminAccount'>
-                <div class='account-settings-grid'>
-                    <label class='member-field'><span>Nama admin</span><input wire:model='adminName' type='text' maxlength='255' autocomplete='name'>@error('adminName')<small>{{ $message }}</small>@enderror</label>
-                    <label class='member-field'><span>Email</span><input wire:model='adminEmail' type='email' maxlength='255' autocomplete='email'>@error('adminEmail')<small>{{ $message }}</small>@enderror</label>
-                    <label class='member-field'><span>Password saat ini</span><input wire:model='currentPassword' type='password' autocomplete='current-password'>@error('currentPassword')<small>{{ $message }}</small>@enderror</label>
-                    <label class='member-field'><span>Password baru <small>(opsional)</small></span><input wire:model='newPassword' type='password' autocomplete='new-password'>@error('newPassword')<small>{{ $message }}</small>@enderror</label>
-                    <label class='member-field'><span>Konfirmasi password baru</span><input wire:model='newPasswordConfirmation' type='password' autocomplete='new-password'>@error('newPasswordConfirmation')<small>{{ $message }}</small>@enderror</label>
-                </div>
-                <div class='settings-actions'><button class='primary-action' type='submit'>Simpan Akun Admin</button></div>
             </form>
         </section>
     </div>

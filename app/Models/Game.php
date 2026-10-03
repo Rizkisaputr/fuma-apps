@@ -14,6 +14,8 @@ class Game extends Model
 
     public const FORMAT_SINGLE_SET = 'single_set';
 
+    public const FORMAT_ONE_SET = 'one_set_21';
+
     public const FORMAT_ROTATION = 'rotation_2_sets';
 
     public const FORMAT_BEST_OF_THREE = 'best_of_three';
@@ -68,6 +70,7 @@ class Game extends Model
     public function formatLabel(): string
     {
         return match ($this->game_format) {
+            self::FORMAT_ONE_SET => '1 set × 21',
             self::FORMAT_ROTATION => '2 set × 11 (tanpa rubber)',
             self::FORMAT_BEST_OF_THREE => 'Best of 3 × 21',
             default => '1 set (data lama)',

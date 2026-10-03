@@ -1,7 +1,7 @@
 <div>
     <header class='page-header'>
         <div><p class='eyebrow'>RINGKASAN</p><h1>Dashboard</h1><p>Selamat datang, {{ auth()->user()->name }}. Berikut kondisi operasional {{ $appSettings->app_name }} saat ini.</p></div>
-        <div class='date-pill'>{{ now()->translatedFormat('l, d F Y') }}</div>
+        <div class='date-pill'>{{ now(config('app.display_timezone'))->translatedFormat('l, d F Y') }}</div>
     </header>
 
     <section class='dashboard-stat-grid'>

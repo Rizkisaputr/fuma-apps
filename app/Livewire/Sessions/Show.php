@@ -31,7 +31,7 @@ class Show extends Component
     /** @var array<int, int|string> */
     public array $teamB = ['', ''];
 
-    public string $gameFormat = Game::FORMAT_BEST_OF_THREE;
+    public string $gameFormat = '';
 
     public ?int $resultGameId = null;
 
@@ -211,11 +211,6 @@ class Show extends Component
     public function openCreateGameForm(): void
     {
         $this->resetGameForm();
-        $this->gameFormat = PlaySessionMember::query()
-            ->where('play_session_id', $this->sessionId)
-            ->count() >= 16
-                ? Game::FORMAT_ROTATION
-                : Game::FORMAT_BEST_OF_THREE;
         $this->showGameForm = true;
     }
 
@@ -375,7 +370,11 @@ class Show extends Component
         $this->winnerTeam = $game->winner_team ?? '';
         $this->teamAScore = $game->team_a_score ?? '';
         $this->teamBScore = $game->team_b_score ?? '';
-        $setCount = $game->game_format === Game::FORMAT_BEST_OF_THREE ? 3 : ($game->game_format === Game::FORMAT_ROTATION ? 2 : 1);
+        $setCount = match ($game->game_format) {
+            Game::FORMAT_BEST_OF_THREE => 3,
+            Game::FORMAT_ROTATION => 2,
+            default => 1,
+        };
         $setsByNumber = $game->gameSets->keyBy('set_number');
         $this->setScores = collect(range(1, $setCount))
             ->map(function (int $setNumber) use ($setsByNumber): array {
@@ -516,7 +515,7 @@ class Show extends Component
             'teamA.*' => ['required', 'integer'],
             'teamB' => ['required', 'array', 'size:2'],
             'teamB.*' => ['required', 'integer'],
-            'gameFormat' => ['required', 'in:'.Game::FORMAT_ROTATION.','.Game::FORMAT_BEST_OF_THREE.','.Game::FORMAT_SINGLE_SET],
+            'gameFormat' => ['required', 'in:'.Game::FORMAT_ONE_SET.','.Game::FORMAT_ROTATION.','.Game::FORMAT_BEST_OF_THREE.','.Game::FORMAT_SINGLE_SET],
         ], [
             'teamA.size' => 'Tim A harus berisi tepat dua pemain.',
             'teamB.size' => 'Tim B harus berisi tepat dua pemain.',
@@ -611,7 +610,12 @@ class Show extends Component
             'setScores.*.team_b_score.max' => 'Skor maksimal adalah 99.',
         ]);
 
-        $maximumSets = $game->game_format === Game::FORMAT_ROTATION ? 2 : 3;
+        $maximumSets = match ($game->game_format) {
+            Game::FORMAT_ONE_SET => 1,
+            Game::FORMAT_ROTATION => 2,
+            default => 3,
+        };
+        $minimumSets = $game->game_format === Game::FORMAT_ONE_SET ? 1 : 2;
         $sets = [];
 
         for ($index = 0; $index < $maximumSets; $index++) {
@@ -621,7 +625,7 @@ class Show extends Component
             $teamBIsEmpty = $teamB === '' || $teamB === null;
 
             if ($teamAIsEmpty && $teamBIsEmpty) {
-                if ($index < 2) {
+                if ($index < $minimumSets) {
                     $this->addError('setScores.'.$index.'.team_a_score', 'Skor set '.($index + 1).' wajib diisi.');
 
                     return null;
@@ -654,6 +658,26 @@ class Show extends Component
                 return null;
             }
 
+            if (in_array($game->game_format, [Game::FORMAT_ONE_SET, Game::FORMAT_BEST_OF_THREE], true)) {
+                $winningScore = max($teamA, $teamB);
+                $losingScore = min($teamA, $teamB);
+                $isRegularWin = $winningScore === 21 && $losingScore <= 19;
+                $isDeuceWin = $winningScore >= 22
+                    && $winningScore <= 29
+                    && $losingScore >= 20
+                    && $winningScore - $losingScore === 2;
+                $isThirtyPointWin = $winningScore === 30 && in_array($losingScore, [28, 29], true);
+
+                if (! $isRegularWin && ! $isDeuceWin && ! $isThirtyPointWin) {
+                    $this->addError(
+                        'setScores.'.$index.'.team_a_score',
+                        'Skor set '.($index + 1).' tidak sah. Setelah 20–20 harus unggul 2 poin, dengan batas akhir 30 poin.',
+                    );
+
+                    return null;
+                }
+            }
+
             $sets[] = [
                 'team_a_score' => $teamA,
                 'team_b_score' => $teamB,
@@ -661,8 +685,11 @@ class Show extends Component
             ];
         }
 
-        if (count($sets) < 2) {
-            $this->addError('result', 'Skor set 1 dan set 2 wajib diisi.');
+        if (count($sets) < $minimumSets) {
+            $this->addError(
+                'result',
+                $minimumSets === 1 ? 'Skor set wajib diisi.' : 'Skor set 1 dan set 2 wajib diisi.',
+            );
 
             return null;
         }
@@ -698,7 +725,7 @@ class Show extends Component
         $this->editingGameId = null;
         $this->teamA = ['', ''];
         $this->teamB = ['', ''];
-        $this->gameFormat = Game::FORMAT_BEST_OF_THREE;
+        $this->gameFormat = '';
         $this->resetErrorBag('game');
         $this->resetValidation(['teamA', 'teamB', 'gameFormat']);
     }
@@ -749,10 +776,47 @@ class Show extends Component
             ->flatMap->gamePlayers
             ->pluck('member_id')
             ->unique();
-        $playerRows = $attendances->map(fn (PlaySessionMember $attendance): array => [
-            'member' => $attendance->member,
-            'completed_games' => (int) ($completedCounts[$attendance->member_id] ?? 0),
-        ]);
+        $playerRows = $attendances->map(function (PlaySessionMember $attendance) use ($games, $completedCounts): array {
+            $memberGames = $games->filter(fn (Game $game): bool => $game->gamePlayers
+                ->contains('member_id', $attendance->member_id));
+            $completedMemberGames = $memberGames->where('status', 'completed')->values();
+            $lastCompletedGame = $completedMemberGames->last();
+            $playingGame = $memberGames->firstWhere('status', 'playing');
+            $waitingGame = $memberGames->firstWhere('status', 'waiting');
+            $lastGameNumber = $lastCompletedGame?->game_number;
+
+            return [
+                'member' => $attendance->member,
+                'completed_games' => (int) ($completedCounts[$attendance->member_id] ?? 0),
+                'last_game_number' => $lastGameNumber,
+                'rested_games' => $lastGameNumber
+                    ? $games->where('status', 'completed')->where('game_number', '>', $lastGameNumber)->count()
+                    : 0,
+                'playing_game_number' => $playingGame?->game_number,
+                'scheduled_game_number' => $waitingGame?->game_number,
+            ];
+        });
+        $readyPlayers = $playerRows->filter(fn (array $row): bool => $row['completed_games'] > 0
+            && ! $playingIds->contains($row['member']->id)
+            && ! $waitingIds->contains($row['member']->id))
+            ->sort(function (array $left, array $right): int {
+                return $right['rested_games'] <=> $left['rested_games']
+                    ?: $left['completed_games'] <=> $right['completed_games']
+                    ?: $left['member']->name <=> $right['member']->name;
+            })
+            ->values();
+        $rotationQueue = $playerRows
+            ->filter(fn (array $row): bool => ! $row['playing_game_number'] && ! $row['scheduled_game_number'])
+            ->sort(function (array $left, array $right): int {
+                $leftHasPlayed = $left['completed_games'] > 0 ? 1 : 0;
+                $rightHasPlayed = $right['completed_games'] > 0 ? 1 : 0;
+
+                return $leftHasPlayed <=> $rightHasPlayed
+                    ?: $right['rested_games'] <=> $left['rested_games']
+                    ?: $left['completed_games'] <=> $right['completed_games']
+                    ?: $left['member']->name <=> $right['member']->name;
+            })
+            ->values();
 
         return view('livewire.sessions.show', [
             'playSession' => $session,
@@ -767,9 +831,8 @@ class Show extends Component
             'unplayedPlayers' => $playerRows->filter(fn (array $row): bool => $row['completed_games'] === 0
                 && ! $playingIds->contains($row['member']->id)
                 && ! $waitingIds->contains($row['member']->id))->values(),
-            'readyPlayers' => $playerRows->filter(fn (array $row): bool => $row['completed_games'] > 0
-                && ! $playingIds->contains($row['member']->id)
-                && ! $waitingIds->contains($row['member']->id))->values(),
+            'readyPlayers' => $readyPlayers,
+            'rotationQueue' => $rotationQueue,
             'availableMembers' => Member::query()
                 ->where('is_active', true)
                 ->whereNotIn('id', $attendances->pluck('member_id'))

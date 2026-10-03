@@ -78,7 +78,10 @@
                             @foreach ($group['players'] as $row)
                                 <div>
                                     <span class='member-initial' aria-hidden='true'>{{ mb_strtoupper(mb_substr($row['member']->name, 0, 1)) }}</span>
-                                    <span><strong>{{ $row['member']->name }}</strong><small>{{ ucfirst($row['member']->skill_level) }} &middot; {{ $row['completed_games'] }} game selesai</small></span>
+                                    <span>
+                                        <strong>{{ $row['member']->name }}</strong>
+                                        <small>{{ ucfirst($row['member']->skill_level) }} · {{ $row['completed_games'] }}× main</small>
+                                    </span>
                                 </div>
                             @endforeach
                         </div>
@@ -86,6 +89,33 @@
                 </article>
             @endforeach
         </div>
+    </section>
+
+    <section class='rotation-counter'>
+        <header class='rotation-counter-heading'>
+            <div><p class='eyebrow'>REKOMENDASI GILIRAN</p><h2>Hitung Skip Pemain</h2></div>
+            <p><strong>Skip</strong> adalah jumlah game yang selesai sejak pemain terakhir main. Angka terbesar menunggu paling lama.</p>
+        </header>
+        @if ($rotationQueue->isEmpty())
+            <div class='game-empty-state'>Semua pemain sedang main atau sudah masuk antrean.</div>
+        @else
+            <div class='rotation-counter-list'>
+                @foreach ($rotationQueue as $index => $row)
+                    <article wire:key='rotation-counter-{{ $row['member']->id }}'>
+                        <span class='rotation-rank'>{{ $index + 1 }}</span>
+                        <span class='member-initial' aria-hidden='true'>{{ mb_strtoupper(mb_substr($row['member']->name, 0, 1)) }}</span>
+                        <div><strong>{{ $row['member']->name }}</strong><small>{{ $row['completed_games'] }}× main{{ $row['last_game_number'] ? ' · terakhir Game '.$row['last_game_number'] : '' }}</small></div>
+                        @if (! $row['last_game_number'])
+                            <strong class='skip-count is-priority'><span>Belum main</span><small>Prioritas</small></strong>
+                        @elseif ($row['rested_games'] === 0)
+                            <strong class='skip-count is-zero'><span>0 game</span><small>Baru selesai</small></strong>
+                        @else
+                            <strong class='skip-count'><span>{{ $row['rested_games'] }} game</span><small>Sudah di-skip</small></strong>
+                        @endif
+                    </article>
+                @endforeach
+            </div>
+        @endif
     </section>
 
     <section class='game-board'>
@@ -102,7 +132,7 @@
                         <div><small>Tim B</small><strong>{{ $currentTeamB->pluck('member.name')->join(' & ') }}</strong></div>
                     </div>
                     <footer>
-                        <span>Mulai {{ $currentGame->started_at?->translatedFormat('H:i') }}</span>
+                        <span>Mulai {{ $currentGame->started_at?->timezone(config('app.display_timezone'))->translatedFormat('H:i') }} WIB</span>
                         <div><button type='button' wire:click='openEditGameForm({{ $currentGame->id }})'>Koreksi pemain</button><button class='finish-game' type='button' wire:click='openResultForm({{ $currentGame->id }})'>Selesaikan Game</button></div>
                     </footer>
                 </article>
@@ -150,10 +180,10 @@
                     @php($historyTeamB = $game->gamePlayers->where('team', 'B'))
                     <article wire:key='completed-game-{{ $game->id }}'>
                         <div class='history-number'><span>Game</span><strong>{{ $game->game_number }}</strong></div>
-                        <div class='history-team {{ $game->winner_team === 'A' ? 'is-winner' : '' }}'><small>Tim A {{ $game->winner_team === 'A' ? '&middot; Menang' : '' }}</small><strong>{{ $historyTeamA->pluck('member.name')->join(' & ') }}</strong></div>
+                        <div class='history-team {{ $game->winner_team === 'A' ? 'is-winner' : '' }}'><small>Tim A {{ $game->winner_team === 'A' ? '· Menang' : '' }}</small><strong>{{ $historyTeamA->pluck('member.name')->join(' & ') }}</strong></div>
                         <div class='history-score'><strong>{{ $game->scoreSummary() }}</strong><small>{{ $game->resultLabel() }}</small></div>
-                        <div class='history-team {{ $game->winner_team === 'B' ? 'is-winner' : '' }}'><small>Tim B {{ $game->winner_team === 'B' ? '&middot; Menang' : '' }}</small><strong>{{ $historyTeamB->pluck('member.name')->join(' & ') }}</strong></div>
-                        <div class='history-meta'><span>{{ $game->completed_at?->translatedFormat('H:i') }}</span><div><button type='button' wire:click='openEditGameForm({{ $game->id }})'>Pemain</button><button type='button' wire:click='openResultForm({{ $game->id }})'>Hasil</button></div></div>
+                        <div class='history-team {{ $game->winner_team === 'B' ? 'is-winner' : '' }}'><small>Tim B {{ $game->winner_team === 'B' ? '· Menang' : '' }}</small><strong>{{ $historyTeamB->pluck('member.name')->join(' & ') }}</strong></div>
+                        <div class='history-meta'><span>{{ $game->completed_at?->timezone(config('app.display_timezone'))->translatedFormat('H:i') }} WIB</span><div><button type='button' wire:click='openEditGameForm({{ $game->id }})'>Pemain</button><button type='button' wire:click='openResultForm({{ $game->id }})'>Hasil</button></div></div>
                     </article>
                 @endforeach
             </div>
@@ -175,7 +205,7 @@
                             <span class='member-initial' aria-hidden='true'>{{ mb_strtoupper(mb_substr($attendance->member?->name ?? '?', 0, 1)) }}</span>
                             <div class='attendance-person'>
                                 <strong>{{ $attendance->member?->name ?? 'Member terhapus' }}</strong>
-                                <span>Hadir {{ $attendance->attended_at->translatedFormat('H:i') }} · Iuran Rp{{ number_format($attendance->fee_amount, 0, ',', '.') }}</span>
+                                <span>Hadir {{ $attendance->attended_at->timezone(config('app.display_timezone'))->translatedFormat('H:i') }} WIB · Iuran Rp{{ number_format($attendance->fee_amount, 0, ',', '.') }}</span>
                             </div>
                             <span class='payment-status payment-status--{{ $attendance->paid_at ? 'paid' : 'unpaid' }}'>{{ $attendance->paid_at ? 'Sudah bayar' : 'Belum bayar' }}</span>
                             <div class='attendance-actions'>
@@ -232,11 +262,12 @@
                     @if (! $editingGameId)
                         <fieldset class='game-format-options'>
                             <legend>Format game</legend>
+                            <label><input type='radio' wire:model='gameFormat' value='{{ \App\Models\Game::FORMAT_ONE_SET }}'><span><strong>1 set</strong><small>1 set × 21, pemenang langsung ditentukan</small></span></label>
                             <label><input type='radio' wire:model='gameFormat' value='{{ \App\Models\Game::FORMAT_ROTATION }}'><span><strong>Rotasi cepat</strong><small>2 set × 11, tanpa rubber dan dapat berakhir seri</small></span></label>
                             <label><input type='radio' wire:model='gameFormat' value='{{ \App\Models\Game::FORMAT_BEST_OF_THREE }}'><span><strong>Normal</strong><small>Best of 3 × 21, set ketiga hanya saat 1–1</small></span></label>
                         </fieldset>
                     @else
-                        <div class='game-format-summary'><span>Format game</span><strong>{{ match ($gameFormat) { \App\Models\Game::FORMAT_ROTATION => '2 set × 11 (tanpa rubber)', \App\Models\Game::FORMAT_BEST_OF_THREE => 'Best of 3 × 21', default => '1 set (data lama)' } }}</strong></div>
+                        <div class='game-format-summary'><span>Format game</span><strong>{{ match ($gameFormat) { \App\Models\Game::FORMAT_ONE_SET => '1 set × 21', \App\Models\Game::FORMAT_ROTATION => '2 set × 11 (tanpa rubber)', \App\Models\Game::FORMAT_BEST_OF_THREE => 'Best of 3 × 21', default => '1 set (data lama)' } }}</strong></div>
                     @endif
                     <div class='team-picker-grid'>
                         @foreach (['A' => 'teamA', 'B' => 'teamB'] as $team => $model)
@@ -272,13 +303,33 @@
     @endif
 
     @if ($resultGameId && $resultGame)
+        @php($winnerPlayers = $resultGame->winner_team ? $resultGame->gamePlayers->where('team', $resultGame->winner_team)->pluck('member.name')->filter()->join(' & ') : '')
         <div class='member-modal-backdrop' wire:click.self='closeResultForm'>
             <section class='member-modal result-modal' role='dialog' aria-modal='true' aria-labelledby='result-form-title'>
                 <header>
-                    <div><p class='eyebrow'>HASIL GAME {{ $resultGame->game_number }}</p><h2 id='result-form-title'>{{ $resultGame->game_format === \App\Models\Game::FORMAT_SINGLE_SET ? 'Pilih Pemenang' : 'Catat Skor per Set' }}</h2></div>
+                    <div><p class='eyebrow'>HASIL GAME {{ $resultGame->game_number }}</p><h2 id='result-form-title'>{{ $resultGame->status === 'completed' ? 'Hasil Pertandingan' : ($resultGame->game_format === \App\Models\Game::FORMAT_SINGLE_SET ? 'Pilih Pemenang' : 'Catat Skor per Set') }}</h2></div>
                     <button class='modal-close' type='button' wire:click='closeResultForm' aria-label='Tutup formulir'>&times;</button>
                 </header>
                 <form wire:submit='saveResult'>
+                    @if ($resultGame->status === 'completed')
+                        @if ($resultGame->winner_team)
+                            <div class='result-celebration' role='status'>
+                                <span class='celebration-confetti' aria-hidden='true'>@for ($piece = 0; $piece < 12; $piece++)<i></i>@endfor</span>
+                                <span class='celebration-trophy' aria-hidden='true'>🏆</span>
+                                <p>SELAMAT!</p>
+                                <h3>Tim {{ $resultGame->winner_team }} Memenangkan Game</h3>
+                                <strong>{{ $winnerPlayers }}</strong>
+                                <small>Game {{ $resultGame->game_number }} · {{ $resultGame->scoreSummary() }}</small>
+                            </div>
+                        @else
+                            <div class='result-celebration result-celebration--draw' role='status'>
+                                <span class='celebration-trophy' aria-hidden='true'>🤝</span>
+                                <p>PERTANDINGAN SELESAI</p>
+                                <h3>Game Berakhir Seri</h3>
+                                <small>Game {{ $resultGame->game_number }} · {{ $resultGame->scoreSummary() }}</small>
+                            </div>
+                        @endif
+                    @endif
                     <div class='game-format-summary'><span>Format</span><strong>{{ $resultGame->formatLabel() }}</strong></div>
                     @if ($resultGame->game_format === \App\Models\Game::FORMAT_SINGLE_SET)
                         <fieldset class='winner-options'>
@@ -294,13 +345,16 @@
                         @error('teamAScore') <small class='field-error'>{{ $message }}</small> @enderror
                         @error('teamBScore') <small class='field-error'>{{ $message }}</small> @enderror
                     @else
+                        @if ($resultGame->status !== 'completed' && in_array($resultGame->game_format, [\App\Models\Game::FORMAT_ONE_SET, \App\Models\Game::FORMAT_BEST_OF_THREE], true))
+                            <p class='form-help'>Set dimenangkan pada 21 poin. Jika 20–20, permainan dilanjutkan sampai unggul 2 poin, maksimal 30 poin.</p>
+                        @endif
                         <div class='set-score-list'>
                             @foreach ($setScores as $index => $setScore)
                                 <fieldset class='set-score-row' wire:key='set-score-{{ $index }}'>
                                     <legend>Set {{ $index + 1 }} {{ $resultGame->game_format === \App\Models\Game::FORMAT_BEST_OF_THREE && $index === 2 ? '· Rubber bila 1–1' : '' }}</legend>
-                                    <label class='member-field'><span>Tim A</span><input type='number' min='0' max='99' wire:model='setScores.{{ $index }}.team_a_score' placeholder='0'></label>
+                                    <label class='member-field'><span>Tim A</span><input type='number' min='0' max='{{ in_array($resultGame->game_format, [\App\Models\Game::FORMAT_ONE_SET, \App\Models\Game::FORMAT_BEST_OF_THREE], true) ? 30 : 99 }}' wire:model='setScores.{{ $index }}.team_a_score' placeholder='0'></label>
                                     <span>:</span>
-                                    <label class='member-field'><span>Tim B</span><input type='number' min='0' max='99' wire:model='setScores.{{ $index }}.team_b_score' placeholder='0'></label>
+                                    <label class='member-field'><span>Tim B</span><input type='number' min='0' max='{{ in_array($resultGame->game_format, [\App\Models\Game::FORMAT_ONE_SET, \App\Models\Game::FORMAT_BEST_OF_THREE], true) ? 30 : 99 }}' wire:model='setScores.{{ $index }}.team_b_score' placeholder='0'></label>
                                     @error('setScores.'.$index.'.team_a_score') <small class='field-error'>{{ $message }}</small> @enderror
                                     @error('setScores.'.$index.'.team_b_score') <small class='field-error'>{{ $message }}</small> @enderror
                                 </fieldset>

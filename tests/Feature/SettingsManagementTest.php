@@ -11,7 +11,6 @@ use Database\Seeders\ApplicationSettingSeeder;
 use Database\Seeders\CashCategorySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -39,7 +38,8 @@ class SettingsManagementTest extends TestCase
             ->assertOk()
             ->assertSee('Nama dan Logo')
             ->assertSee('Nilai Default')
-            ->assertSee('Profil dan Keamanan');
+            ->assertDontSee('Profil Administrator')
+            ->assertDontSee('AKUN ADMIN');
     }
 
     public function test_session_defaults_seed_new_form_without_changing_existing_session(): void
@@ -114,43 +114,5 @@ class SettingsManagementTest extends TestCase
             ->assertOk()
             ->assertSee('<title>Dashboard · Klub Juvi</title>', false)
             ->assertSee("<link rel='icon' href='{$logoUrl}'>", false);
-    }
-
-    public function test_admin_account_requires_current_password_before_updating(): void
-    {
-        $admin = User::factory()->create([
-            'name' => 'Admin Lama',
-            'email' => 'lama@example.test',
-            'password' => Hash::make('rahasia-lama'),
-        ]);
-
-        Livewire::actingAs($admin)
-            ->test(SettingsIndex::class)
-            ->set('adminName', 'Admin Baru')
-            ->set('adminEmail', 'baru@example.test')
-            ->set('currentPassword', 'salah')
-            ->call('saveAdminAccount')
-            ->assertHasErrors(['currentPassword']);
-
-        $this->assertDatabaseHas('users', [
-            'id' => $admin->id,
-            'name' => 'Admin Lama',
-            'email' => 'lama@example.test',
-        ]);
-
-        Livewire::actingAs($admin->fresh())
-            ->test(SettingsIndex::class)
-            ->set('adminName', 'Admin Baru')
-            ->set('adminEmail', 'baru@example.test')
-            ->set('currentPassword', 'rahasia-lama')
-            ->set('newPassword', 'password-baru')
-            ->set('newPasswordConfirmation', 'password-baru')
-            ->call('saveAdminAccount')
-            ->assertHasNoErrors();
-
-        $admin->refresh();
-        $this->assertSame('Admin Baru', $admin->name);
-        $this->assertSame('baru@example.test', $admin->email);
-        $this->assertTrue(Hash::check('password-baru', $admin->password));
     }
 }

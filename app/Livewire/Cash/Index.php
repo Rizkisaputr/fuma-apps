@@ -35,7 +35,7 @@ class Index extends Component
 
     public function mount(): void
     {
-        $this->transactionDate = now()->toDateString();
+        $this->transactionDate = now(config('app.display_timezone'))->toDateString();
     }
 
     public function updatedTransactionType(): void
@@ -130,7 +130,7 @@ class Index extends Component
     {
         $this->transactionType = 'income';
         $this->categoryId = '';
-        $this->transactionDate = now()->toDateString();
+        $this->transactionDate = now(config('app.display_timezone'))->toDateString();
         $this->amount = '';
         $this->description = '';
         $this->resetValidation(['transactionType', 'categoryId', 'transactionDate', 'amount', 'description']);

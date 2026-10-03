@@ -23,10 +23,11 @@ class Index extends Component
 
     public function mount(): void
     {
-        $this->calendarMonth = now()->format('Y-m');
-        $this->selectedDate = now()->toDateString();
-        $this->dateFrom = now()->startOfMonth()->toDateString();
-        $this->dateTo = now()->endOfMonth()->toDateString();
+        $localNow = now(config('app.display_timezone'));
+        $this->calendarMonth = $localNow->format('Y-m');
+        $this->selectedDate = $localNow->toDateString();
+        $this->dateFrom = $localNow->copy()->startOfMonth()->toDateString();
+        $this->dateTo = $localNow->copy()->endOfMonth()->toDateString();
     }
 
     public function selectTab(string $tab): void

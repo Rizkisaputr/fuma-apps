@@ -135,8 +135,9 @@ class ReportService
     /** @return array<string, int|PlaySession|null> */
     public function dashboardSummary(): array
     {
-        $monthStart = now()->startOfMonth()->toDateString();
-        $monthEnd = now()->endOfMonth()->toDateString();
+        $localNow = now(config('app.display_timezone'));
+        $monthStart = $localNow->copy()->startOfMonth()->toDateString();
+        $monthEnd = $localNow->copy()->endOfMonth()->toDateString();
         $monthCash = $this->cashTotals($monthStart, $monthEnd);
         $allCash = $this->cashTotals();
 

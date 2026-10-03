@@ -31,6 +31,16 @@ class SessionManagementTest extends TestCase
             ->assertSee('Buat Sesi');
     }
 
+    public function test_session_date_is_displayed_in_indonesian(): void
+    {
+        $session = PlaySession::query()->create(['play_date' => '2026-10-02']);
+
+        $this->actingAs(User::factory()->create())
+            ->get('/sesi-main/'.$session->id)
+            ->assertOk()
+            ->assertSee('Jumat, 02 Oktober 2026');
+    }
+
     public function test_admin_can_create_session_with_defaults(): void
     {
         Livewire::actingAs(User::factory()->create())
@@ -89,6 +99,25 @@ class SessionManagementTest extends TestCase
         $attendance = PlaySessionMember::query()->firstOrFail();
         $this->assertSame(18000, $attendance->fee_amount);
         $this->assertNotNull($attendance->attended_at);
+    }
+
+    public function test_attendance_time_is_displayed_in_western_indonesia_time(): void
+    {
+        $session = PlaySession::query()->create([
+            'play_date' => '2026-10-03',
+            'status' => 'active',
+        ]);
+        $member = Member::query()->create(['name' => 'Bima', 'skill_level' => 'pemula']);
+        PlaySessionMember::query()->create([
+            'play_session_id' => $session->id,
+            'member_id' => $member->id,
+            'attended_at' => '2026-10-03 01:30:00',
+            'fee_amount' => 15000,
+        ]);
+
+        Livewire::actingAs(User::factory()->create())
+            ->test(Show::class, ['playSession' => $session])
+            ->assertSee('Hadir 08:30 WIB');
     }
 
     public function test_duplicate_attendance_is_rejected(): void

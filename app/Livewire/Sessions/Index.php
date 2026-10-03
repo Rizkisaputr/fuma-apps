@@ -45,7 +45,7 @@ class Index extends Component
     public function openCreateForm(): void
     {
         $this->resetCreateForm();
-        $this->playDate = today()->format('Y-m-d');
+        $this->playDate = today(config('app.display_timezone'))->format('Y-m-d');
         $this->showCreateForm = true;
     }
 

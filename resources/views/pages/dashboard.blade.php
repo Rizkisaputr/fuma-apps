@@ -5,7 +5,7 @@
             <h1>Dashboard</h1>
             <p>Selamat datang, {{ auth()->user()->name }}. Kerangka admin FUMA sudah siap digunakan.</p>
         </div>
-        <div class='date-pill'>{{ now()->translatedFormat('l, d F Y') }}</div>
+        <div class='date-pill'>{{ now(config('app.display_timezone'))->translatedFormat('l, d F Y') }}</div>
     </header>
 
     <section class='dashboard-welcome'>
