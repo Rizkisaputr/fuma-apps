@@ -123,8 +123,8 @@ class GameManagementTest extends TestCase
 
         $component->call('openResultForm', $game->id)
             ->set('setScores', [
-                ['team_a_score' => 21, 'team_b_score' => 17],
-                ['team_a_score' => 21, 'team_b_score' => 15],
+                ['team_a_score' => 15, 'team_b_score' => 10],
+                ['team_a_score' => 15, 'team_b_score' => 9],
                 ['team_a_score' => '', 'team_b_score' => ''],
             ])
             ->call('saveResult')
@@ -137,8 +137,8 @@ class GameManagementTest extends TestCase
             'team_a_score' => null,
             'team_b_score' => null,
         ]);
-        $this->assertDatabaseHas('game_sets', ['game_id' => $game->id, 'set_number' => 1, 'team_a_score' => 21, 'team_b_score' => 17, 'winner_team' => 'A']);
-        $this->assertDatabaseHas('game_sets', ['game_id' => $game->id, 'set_number' => 2, 'team_a_score' => 21, 'team_b_score' => 15, 'winner_team' => 'A']);
+        $this->assertDatabaseHas('game_sets', ['game_id' => $game->id, 'set_number' => 1, 'team_a_score' => 15, 'team_b_score' => 10, 'winner_team' => 'A']);
+        $this->assertDatabaseHas('game_sets', ['game_id' => $game->id, 'set_number' => 2, 'team_a_score' => 15, 'team_b_score' => 9, 'winner_team' => 'A']);
         $this->assertNotNull($game->refresh()->completed_at);
         $this->assertSame(1, $this->completedGameCount($members[0], $session));
         $this->assertSame(0, $this->completedGameCount($members[4], $session));
@@ -146,7 +146,7 @@ class GameManagementTest extends TestCase
         $component->call('openResultForm', $game->id)
             ->assertSee('Tim A Memenangkan Game')
             ->assertSee($members[0]->name.' & '.$members[1]->name)
-            ->assertDontSee('Set dimenangkan pada 21 poin');
+            ->assertDontSee('Set dimenangkan pada 15 poin');
     }
 
     public function test_admin_can_correct_completed_game_players_and_winner(): void
@@ -158,8 +158,8 @@ class GameManagementTest extends TestCase
         $component->call('startGame', $game->id)
             ->call('openResultForm', $game->id)
             ->set('setScores', [
-                ['team_a_score' => 21, 'team_b_score' => 16],
-                ['team_a_score' => 21, 'team_b_score' => 18],
+                ['team_a_score' => 15, 'team_b_score' => 10],
+                ['team_a_score' => 15, 'team_b_score' => 12],
                 ['team_a_score' => '', 'team_b_score' => ''],
             ])
             ->call('saveResult');
@@ -171,8 +171,8 @@ class GameManagementTest extends TestCase
             ->assertHasNoErrors('game');
         $component->call('openResultForm', $game->id)
             ->set('setScores', [
-                ['team_a_score' => 15, 'team_b_score' => 21],
-                ['team_a_score' => 18, 'team_b_score' => 21],
+                ['team_a_score' => 10, 'team_b_score' => 15],
+                ['team_a_score' => 12, 'team_b_score' => 15],
                 ['team_a_score' => '', 'team_b_score' => ''],
             ])
             ->call('saveResult')
@@ -189,7 +189,7 @@ class GameManagementTest extends TestCase
         $this->assertDatabaseCount('game_sets', 2);
     }
 
-    public function test_admin_can_choose_two_sets_of_eleven_and_the_result_may_draw(): void
+    public function test_admin_can_choose_two_sets_of_fifteen_and_the_result_may_draw(): void
     {
         [$session, $members] = $this->sessionWithAttendees(16);
         $component = $this->sessionComponent($session);
@@ -197,13 +197,13 @@ class GameManagementTest extends TestCase
         $game = Game::query()->firstOrFail();
 
         $this->assertSame(Game::FORMAT_ROTATION, $game->game_format);
-        $this->assertSame(11, $game->point_target);
+        $this->assertSame(15, $game->point_target);
 
         $component->call('startGame', $game->id)
             ->call('openResultForm', $game->id)
             ->set('setScores', [
-                ['team_a_score' => 11, 'team_b_score' => 7],
-                ['team_a_score' => 8, 'team_b_score' => 11],
+                ['team_a_score' => 15, 'team_b_score' => 10],
+                ['team_a_score' => 9, 'team_b_score' => 15],
             ])
             ->call('saveResult')
             ->assertHasNoErrors();
@@ -242,14 +242,14 @@ class GameManagementTest extends TestCase
         $component->call('startGame', $game->id)
             ->call('openResultForm', $game->id)
             ->set('setScores', [
-                ['team_a_score' => 21, 'team_b_score' => 15],
-                ['team_a_score' => 17, 'team_b_score' => 21],
+                ['team_a_score' => 15, 'team_b_score' => 10],
+                ['team_a_score' => 11, 'team_b_score' => 15],
                 ['team_a_score' => '', 'team_b_score' => ''],
             ])
             ->call('saveResult')
             ->assertHasErrors('result')
-            ->set('setScores.2.team_a_score', 21)
-            ->set('setScores.2.team_b_score', 19)
+            ->set('setScores.2.team_a_score', 15)
+            ->set('setScores.2.team_b_score', 12)
             ->call('saveResult')
             ->assertHasNoErrors();
 
@@ -257,7 +257,7 @@ class GameManagementTest extends TestCase
         $this->assertDatabaseCount('game_sets', 3);
     }
 
-    public function test_best_of_three_accepts_deuce_scores_up_to_thirty_points(): void
+    public function test_best_of_three_accepts_deuce_scores_up_to_twenty_four_points(): void
     {
         [$session, $members] = $this->sessionWithAttendees(8);
         $component = $this->sessionComponent($session);
@@ -267,9 +267,9 @@ class GameManagementTest extends TestCase
         $component->call('startGame', $game->id)
             ->call('openResultForm', $game->id)
             ->set('setScores', [
-                ['team_a_score' => 22, 'team_b_score' => 20],
-                ['team_a_score' => 29, 'team_b_score' => 30],
-                ['team_a_score' => 30, 'team_b_score' => 28],
+                ['team_a_score' => 16, 'team_b_score' => 14],
+                ['team_a_score' => 23, 'team_b_score' => 24],
+                ['team_a_score' => 24, 'team_b_score' => 22],
             ])
             ->call('saveResult')
             ->assertHasNoErrors();
@@ -330,8 +330,8 @@ class GameManagementTest extends TestCase
         $component->call('startGame', $game->id)
             ->call('openResultForm', $game->id)
             ->set('setScores', [
-                ['team_a_score' => 21, 'team_b_score' => 20],
-                ['team_a_score' => 21, 'team_b_score' => 15],
+                ['team_a_score' => 15, 'team_b_score' => 14],
+                ['team_a_score' => 15, 'team_b_score' => 10],
                 ['team_a_score' => '', 'team_b_score' => ''],
             ])
             ->call('saveResult')

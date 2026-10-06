@@ -36,6 +36,16 @@
 
         <section class='settings-panel settings-panel--wide'>
             <header><div><p class='eyebrow'>KATEGORI KAS</p><h2>Nama, Ikon, dan Warna</h2></div></header>
+            <form class='new-category-form' wire:submit='addCategory'>
+                <p class='settings-note'>Tambahkan kategori baru agar langsung tersedia saat mencatat transaksi kas.</p>
+                <div class='settings-form-grid settings-form-grid--category'>
+                    <label class='member-field'><span>Jenis</span><select wire:model.live='newCategoryType'><option value='income'>Pemasukan</option><option value='expense'>Pengeluaran</option></select>@error('newCategoryType')<small>{{ $message }}</small>@enderror</label>
+                    <label class='member-field'><span>Nama kategori</span><input wire:model='newCategoryName' type='text' maxlength='100' placeholder='Contoh: Donasi'>@error('newCategoryName')<small>{{ $message }}</small>@enderror</label>
+                    <label class='member-field'><span>Ikon</span><input wire:model='newCategoryIcon' type='text' maxlength='10' placeholder='Opsional'>@error('newCategoryIcon')<small>{{ $message }}</small>@enderror</label>
+                    <label class='color-setting'><span>Warna</span><input wire:model.live='newCategoryColor' type='color'>@error('newCategoryColor')<small>{{ $message }}</small>@enderror</label>
+                </div>
+                <div class='settings-actions'><button class='secondary-action' type='submit'>Tambah Kategori</button></div>
+            </form>
             <form wire:submit='saveCategories'>
                 <p class='settings-note'>Jenis pemasukan atau pengeluaran dikunci. Mengubah tampilan tidak mengubah jenis transaksi lama.</p>
                 <div class='settings-category-list'>

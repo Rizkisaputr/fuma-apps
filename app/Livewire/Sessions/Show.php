@@ -13,6 +13,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -20,6 +21,10 @@ use Livewire\Component;
 class Show extends Component
 {
     public int $sessionId;
+
+    public bool $showSessionTypeForm = false;
+
+    public string $sessionType = PlaySession::TYPE_FUN_MATCH;
 
     public bool $showGameForm = false;
 
@@ -47,6 +52,42 @@ class Show extends Component
     public function mount(PlaySession $playSession): void
     {
         $this->sessionId = $playSession->id;
+        $this->sessionType = in_array($playSession->session_type, array_keys(PlaySession::typeOptions()), true)
+            ? $playSession->session_type
+            : PlaySession::TYPE_FUN_MATCH;
+    }
+
+    public function openSessionTypeForm(): void
+    {
+        $session = $this->playSession();
+        $this->sessionType = in_array($session->session_type, array_keys(PlaySession::typeOptions()), true)
+            ? $session->session_type
+            : PlaySession::TYPE_FUN_MATCH;
+        $this->showSessionTypeForm = true;
+        $this->resetValidation('sessionType');
+    }
+
+    public function closeSessionTypeForm(): void
+    {
+        $this->showSessionTypeForm = false;
+        $this->resetValidation('sessionType');
+    }
+
+    public function saveSessionType(): void
+    {
+        $validated = $this->validate([
+            'sessionType' => ['required', Rule::in(array_keys(PlaySession::typeOptions()))],
+        ], [
+            'sessionType.required' => 'Jenis sesi wajib dipilih.',
+            'sessionType.in' => 'Jenis sesi tidak valid.',
+        ]);
+
+        $this->playSession()->update([
+            'session_type' => $validated['sessionType'],
+        ]);
+
+        $this->showSessionTypeForm = false;
+        session()->flash('session-message', 'Jenis sesi berhasil diperbarui.');
     }
 
     public function addAttendance(int $memberId): void
@@ -127,6 +168,13 @@ class Show extends Component
                 ->where('play_session_id', $this->sessionId)
                 ->lockForUpdate()
                 ->findOrFail($attendanceId);
+
+            if ($attendance->is_duty_admin) {
+                $this->addError('payment', 'Admin bertugas dibebaskan dari iuran dan tidak perlu ditandai bayar.');
+
+                return;
+            }
+
             $category = CashCategory::query()
                 ->where('code', 'dues')
                 ->where('type', 'income')
@@ -171,6 +219,31 @@ class Show extends Component
 
         if (! $this->getErrorBag()->has('payment')) {
             session()->flash('session-message', 'Pembayaran iuran berhasil dicatat.');
+        }
+    }
+
+    public function toggleDutyAdmin(int $attendanceId): void
+    {
+        $this->resetErrorBag('payment');
+
+        DB::transaction(function () use ($attendanceId): void {
+            $attendance = PlaySessionMember::query()
+                ->where('play_session_id', $this->sessionId)
+                ->lockForUpdate()
+                ->findOrFail($attendanceId);
+
+            if (! $attendance->is_duty_admin
+                && ($attendance->paid_at !== null || $attendance->cashTransaction()->exists())) {
+                $this->addError('payment', 'Batalkan pembayaran terlebih dahulu sebelum menandai member sebagai admin bertugas.');
+
+                return;
+            }
+
+            $attendance->update(['is_duty_admin' => ! $attendance->is_duty_admin]);
+        });
+
+        if (! $this->getErrorBag()->has('payment')) {
+            session()->flash('session-message', 'Status admin bertugas berhasil diperbarui.');
         }
     }
 
@@ -255,7 +328,9 @@ class Show extends Component
                     'game_number' => ((int) Game::query()->where('play_session_id', $session->id)->max('game_number')) + 1,
                     'status' => 'waiting',
                     'game_format' => $this->gameFormat,
-                    'point_target' => $this->gameFormat === Game::FORMAT_ROTATION ? 11 : 21,
+                    'point_target' => in_array($this->gameFormat, [Game::FORMAT_ROTATION, Game::FORMAT_BEST_OF_THREE], true)
+                        ? 15
+                        : 21,
                 ])
                 : Game::query()
                     ->where('play_session_id', $session->id)
@@ -658,20 +733,23 @@ class Show extends Component
                 return null;
             }
 
-            if (in_array($game->game_format, [Game::FORMAT_ONE_SET, Game::FORMAT_BEST_OF_THREE], true)) {
+            if (in_array($game->game_format, [Game::FORMAT_ONE_SET, Game::FORMAT_ROTATION, Game::FORMAT_BEST_OF_THREE], true)) {
                 $winningScore = max($teamA, $teamB);
                 $losingScore = min($teamA, $teamB);
-                $isRegularWin = $winningScore === 21 && $losingScore <= 19;
-                $isDeuceWin = $winningScore >= 22
-                    && $winningScore <= 29
-                    && $losingScore >= 20
+                $deuceScore = $game->point_target - 1;
+                $maximumScore = $game->point_target + 9;
+                $isRegularWin = $winningScore === $game->point_target && $losingScore < $deuceScore;
+                $isDeuceWin = $winningScore > $game->point_target
+                    && $winningScore < $maximumScore
+                    && $losingScore >= $deuceScore
                     && $winningScore - $losingScore === 2;
-                $isThirtyPointWin = $winningScore === 30 && in_array($losingScore, [28, 29], true);
+                $isMaximumPointWin = $winningScore === $maximumScore
+                    && in_array($losingScore, [$maximumScore - 2, $maximumScore - 1], true);
 
-                if (! $isRegularWin && ! $isDeuceWin && ! $isThirtyPointWin) {
+                if (! $isRegularWin && ! $isDeuceWin && ! $isMaximumPointWin) {
                     $this->addError(
                         'setScores.'.$index.'.team_a_score',
-                        'Skor set '.($index + 1).' tidak sah. Setelah 20–20 harus unggul 2 poin, dengan batas akhir 30 poin.',
+                        'Skor set '.($index + 1).' tidak sah. Setelah '.$deuceScore.'–'.$deuceScore.' harus unggul 2 poin, dengan batas akhir '.$maximumScore.' poin.',
                     );
 
                     return null;

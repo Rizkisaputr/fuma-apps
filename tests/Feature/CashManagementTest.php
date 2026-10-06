@@ -10,6 +10,7 @@ use App\Models\Member;
 use App\Models\PlaySession;
 use App\Models\PlaySessionMember;
 use App\Models\User;
+use App\Services\ReportService;
 use Database\Seeders\CashCategorySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -99,6 +100,39 @@ class CashManagementTest extends TestCase
         $this->assertDatabaseHas('cash_transactions', ['play_session_member_id' => $secondAttendance->id, 'amount' => 22500]);
     }
 
+    public function test_duty_admin_is_exempt_from_dues_for_that_session(): void
+    {
+        [$session, $attendance] = $this->attendanceFixture();
+        $component = Livewire::actingAs(User::factory()->create())
+            ->test(SessionShow::class, ['playSession' => $session])
+            ->call('toggleDutyAdmin', $attendance->id)
+            ->assertHasNoErrors('payment')
+            ->assertSee('Admin bertugas')
+            ->assertSee('Bebas iuran');
+
+        $this->assertTrue($attendance->refresh()->is_duty_admin);
+
+        $component->call('markAsPaid', $attendance->id)
+            ->assertHasErrors('payment');
+
+        $this->assertNull($attendance->refresh()->paid_at);
+        $this->assertDatabaseCount('cash_transactions', 0);
+        $this->assertSame(0, app(ReportService::class)->dashboardSummary()['unpaidAttendances']);
+    }
+
+    public function test_paid_member_must_cancel_payment_before_becoming_duty_admin(): void
+    {
+        [$session, $attendance] = $this->attendanceFixture();
+        $component = Livewire::actingAs(User::factory()->create())
+            ->test(SessionShow::class, ['playSession' => $session])
+            ->call('markAsPaid', $attendance->id)
+            ->call('toggleDutyAdmin', $attendance->id)
+            ->assertHasErrors('payment');
+
+        $this->assertFalse($attendance->refresh()->is_duty_admin);
+        $this->assertDatabaseCount('cash_transactions', 1);
+    }
+
     public function test_admin_can_create_allowed_manual_transactions(): void
     {
         $sponsorship = CashCategory::query()->where('name', 'Sponsorship')->firstOrFail();
@@ -132,6 +166,31 @@ class CashManagementTest extends TestCase
             'cash_category_id' => $booking->id,
             'amount' => 125000,
             'play_session_member_id' => null,
+        ]);
+    }
+
+    public function test_admin_can_use_a_custom_cash_category(): void
+    {
+        $category = CashCategory::query()->create([
+            'code' => 'custom_donation',
+            'name' => 'Donasi',
+            'type' => 'income',
+            'is_active' => true,
+        ]);
+
+        Livewire::actingAs(User::factory()->create())
+            ->test(CashIndex::class)
+            ->set('transactionType', 'income')
+            ->assertViewHas('categories', fn ($categories) => $categories->contains('id', $category->id))
+            ->set('categoryId', $category->id)
+            ->set('transactionDate', '2026-10-13')
+            ->set('amount', '75.000')
+            ->call('saveTransaction')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('cash_transactions', [
+            'cash_category_id' => $category->id,
+            'amount' => 75000,
         ]);
     }
 

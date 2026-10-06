@@ -12,9 +12,11 @@ class CashCategorySeeder extends Seeder
         $categories = [
             ['code' => 'dues', 'name' => 'Iuran', 'type' => 'income'],
             ['code' => 'sponsorship', 'name' => 'Sponsorship', 'type' => 'income'],
+            ['code' => 'other_income', 'name' => 'Lain-lain', 'type' => 'income'],
             ['code' => 'court_booking', 'name' => 'Booking Court', 'type' => 'expense'],
             ['code' => 'shuttlecock', 'name' => 'Shuttlecock', 'type' => 'expense'],
             ['code' => 'refreshment', 'name' => 'Refreshment', 'type' => 'expense'],
+            ['code' => 'other_expense', 'name' => 'Lain-lain', 'type' => 'expense'],
         ];
 
         foreach ($categories as $category) {

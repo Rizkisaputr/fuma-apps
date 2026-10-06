@@ -12,12 +12,17 @@ class PlaySessionMember extends Model
     use HasFactory;
 
     protected $fillable = [
-        'play_session_id', 'member_id', 'attended_at', 'fee_amount', 'paid_at',
+        'play_session_id', 'member_id', 'attended_at', 'fee_amount', 'paid_at', 'is_duty_admin',
     ];
 
     protected function casts(): array
     {
-        return ['attended_at' => 'datetime', 'fee_amount' => 'integer', 'paid_at' => 'datetime'];
+        return [
+            'attended_at' => 'datetime',
+            'fee_amount' => 'integer',
+            'paid_at' => 'datetime',
+            'is_duty_admin' => 'boolean',
+        ];
     }
 
     public function playSession(): BelongsTo

@@ -7,13 +7,15 @@
         <div>
             <div class='session-title-line'>
                 <p class='eyebrow'>DETAIL SESI</p>
+                <span class='session-kind-badge'>{{ $playSession->typeLabel() }}</span>
                 <span class='session-status session-status--{{ $playSession->status }}'>{{ $statusLabel }}</span>
             </div>
             <h1>{{ $playSession->play_date->translatedFormat('l, d F Y') }}</h1>
-            <p>Kelola status sesi dan kehadiran member.</p>
+            @if ($playSession->typeSubtitle())<p class='session-kind-note'>{{ $playSession->typeSubtitle() }}</p>@endif
         </div>
 
         <div class='session-status-actions'>
+            <button class='secondary-action' type='button' wire:click='openSessionTypeForm'>Ubah Jenis</button>
             @if ($playSession->status === 'planned')
                 <button class='primary-action' type='button' wire:click='startSession'>Mulai Sesi</button>
                 <button class='cancel-action' type='button' wire:click='completeSession'>Tandai Selesai</button>
@@ -205,14 +207,17 @@
                             <span class='member-initial' aria-hidden='true'>{{ mb_strtoupper(mb_substr($attendance->member?->name ?? '?', 0, 1)) }}</span>
                             <div class='attendance-person'>
                                 <strong>{{ $attendance->member?->name ?? 'Member terhapus' }}</strong>
-                                <span>Hadir {{ $attendance->attended_at->timezone(config('app.display_timezone'))->translatedFormat('H:i') }} WIB · Iuran Rp{{ number_format($attendance->fee_amount, 0, ',', '.') }}</span>
+                                <span>Hadir {{ $attendance->attended_at->timezone(config('app.display_timezone'))->translatedFormat('H:i') }} WIB · {{ $attendance->is_duty_admin ? 'Bebas iuran' : 'Iuran Rp'.number_format($attendance->fee_amount, 0, ',', '.') }}</span>
                             </div>
-                            <span class='payment-status payment-status--{{ $attendance->paid_at ? 'paid' : 'unpaid' }}'>{{ $attendance->paid_at ? 'Sudah bayar' : 'Belum bayar' }}</span>
+                            <span class='payment-status payment-status--{{ $attendance->is_duty_admin ? 'exempt' : ($attendance->paid_at ? 'paid' : 'unpaid') }}'>{{ $attendance->is_duty_admin ? 'Admin bertugas' : ($attendance->paid_at ? 'Sudah bayar' : 'Belum bayar') }}</span>
                             <div class='attendance-actions'>
-                                @if ($attendance->paid_at)
+                                @if ($attendance->is_duty_admin)
+                                    <button class='payment-button payment-button--cancel' type='button' wire:click='toggleDutyAdmin({{ $attendance->id }})'>Batal admin</button>
+                                @elseif ($attendance->paid_at)
                                     <button class='payment-button payment-button--cancel' type='button' wire:click='cancelPayment({{ $attendance->id }})' wire:loading.attr='disabled' wire:target='cancelPayment({{ $attendance->id }})'>Batal bayar</button>
                                 @else
                                     <button class='payment-button' type='button' wire:click='markAsPaid({{ $attendance->id }})' wire:loading.attr='disabled' wire:target='markAsPaid({{ $attendance->id }})'>Tandai bayar</button>
+                                    <button class='duty-admin-button' type='button' wire:click='toggleDutyAdmin({{ $attendance->id }})'>Jadikan admin</button>
                                 @endif
                                 <button class='correction-button' type='button' wire:click='removeAttendance({{ $attendance->id }})'>Koreksi</button>
                             </div>
@@ -245,6 +250,21 @@
         </section>
     </div>
 
+    @if ($showSessionTypeForm)
+        <div class='member-modal-backdrop' wire:click.self='closeSessionTypeForm'>
+            <section class='member-modal session-details-modal' role='dialog' aria-modal='true' aria-labelledby='session-details-title'>
+                <header>
+                    <div><p class='eyebrow'>INFORMASI SESI</p><h2 id='session-details-title'>Ubah Jenis Sesi</h2></div>
+                    <button class='modal-close' type='button' wire:click='closeSessionTypeForm' aria-label='Tutup formulir'>&times;</button>
+                </header>
+                <form wire:submit='saveSessionType'>
+                    <label class='member-field'><span>Jenis sesi</span><select wire:model='sessionType'>@foreach (\App\Models\PlaySession::typeOptions() as $value => $label)<option value='{{ $value }}'>{{ $label }}</option>@endforeach</select>@error('sessionType')<small>{{ $message }}</small>@enderror</label>
+                    <div class='modal-actions'><button class='cancel-action' type='button' wire:click='closeSessionTypeForm'>Batal</button><button class='primary-action' type='submit'>Simpan Jenis</button></div>
+                </form>
+            </section>
+        </div>
+    @endif
+
     @if ($showGameForm)
         @php($memberLookup = $attendedMembers->keyBy('id'))
         @php($previewA = collect($teamA)->map(fn ($id) => $memberLookup->get((int) $id)?->name)->filter()->join(' & '))
@@ -263,11 +283,11 @@
                         <fieldset class='game-format-options'>
                             <legend>Format game</legend>
                             <label><input type='radio' wire:model='gameFormat' value='{{ \App\Models\Game::FORMAT_ONE_SET }}'><span><strong>1 set</strong><small>1 set × 21, pemenang langsung ditentukan</small></span></label>
-                            <label><input type='radio' wire:model='gameFormat' value='{{ \App\Models\Game::FORMAT_ROTATION }}'><span><strong>Rotasi cepat</strong><small>2 set × 11, tanpa rubber dan dapat berakhir seri</small></span></label>
-                            <label><input type='radio' wire:model='gameFormat' value='{{ \App\Models\Game::FORMAT_BEST_OF_THREE }}'><span><strong>Normal</strong><small>Best of 3 × 21, set ketiga hanya saat 1–1</small></span></label>
+                            <label><input type='radio' wire:model='gameFormat' value='{{ \App\Models\Game::FORMAT_ROTATION }}'><span><strong>Rotasi cepat</strong><small>2 set × 15 poin, tanpa rubber dan dapat berakhir seri</small></span></label>
+                            <label><input type='radio' wire:model='gameFormat' value='{{ \App\Models\Game::FORMAT_BEST_OF_THREE }}'><span><strong>Kompetisi Cepat</strong><small>Best of 3 × 15 poin, rubber hanya saat hasil 1–1</small></span></label>
                         </fieldset>
                     @else
-                        <div class='game-format-summary'><span>Format game</span><strong>{{ match ($gameFormat) { \App\Models\Game::FORMAT_ONE_SET => '1 set × 21', \App\Models\Game::FORMAT_ROTATION => '2 set × 11 (tanpa rubber)', \App\Models\Game::FORMAT_BEST_OF_THREE => 'Best of 3 × 21', default => '1 set (data lama)' } }}</strong></div>
+                        <div class='game-format-summary'><span>Format game</span><strong>{{ match ($gameFormat) { \App\Models\Game::FORMAT_ONE_SET => '1 set × 21', \App\Models\Game::FORMAT_ROTATION => 'Rotasi cepat · 2 set × 15 (tanpa rubber)', \App\Models\Game::FORMAT_BEST_OF_THREE => 'Kompetisi Cepat · Best of 3 × 15', default => '1 set (data lama)' } }}</strong></div>
                     @endif
                     <div class='team-picker-grid'>
                         @foreach (['A' => 'teamA', 'B' => 'teamB'] as $team => $model)
@@ -345,16 +365,16 @@
                         @error('teamAScore') <small class='field-error'>{{ $message }}</small> @enderror
                         @error('teamBScore') <small class='field-error'>{{ $message }}</small> @enderror
                     @else
-                        @if ($resultGame->status !== 'completed' && in_array($resultGame->game_format, [\App\Models\Game::FORMAT_ONE_SET, \App\Models\Game::FORMAT_BEST_OF_THREE], true))
-                            <p class='form-help'>Set dimenangkan pada 21 poin. Jika 20–20, permainan dilanjutkan sampai unggul 2 poin, maksimal 30 poin.</p>
+                        @if ($resultGame->status !== 'completed' && in_array($resultGame->game_format, [\App\Models\Game::FORMAT_ONE_SET, \App\Models\Game::FORMAT_ROTATION, \App\Models\Game::FORMAT_BEST_OF_THREE], true))
+                            <p class='form-help'>Set dimenangkan pada {{ $resultGame->point_target }} poin. Jika {{ $resultGame->point_target - 1 }}–{{ $resultGame->point_target - 1 }}, permainan dilanjutkan sampai unggul 2 poin, maksimal {{ $resultGame->point_target + 9 }} poin.</p>
                         @endif
                         <div class='set-score-list'>
                             @foreach ($setScores as $index => $setScore)
                                 <fieldset class='set-score-row' wire:key='set-score-{{ $index }}'>
                                     <legend>Set {{ $index + 1 }} {{ $resultGame->game_format === \App\Models\Game::FORMAT_BEST_OF_THREE && $index === 2 ? '· Rubber bila 1–1' : '' }}</legend>
-                                    <label class='member-field'><span>Tim A</span><input type='number' min='0' max='{{ in_array($resultGame->game_format, [\App\Models\Game::FORMAT_ONE_SET, \App\Models\Game::FORMAT_BEST_OF_THREE], true) ? 30 : 99 }}' wire:model='setScores.{{ $index }}.team_a_score' placeholder='0'></label>
+                                    <label class='member-field'><span>Tim A</span><input type='number' min='0' max='{{ $resultGame->point_target + 9 }}' wire:model='setScores.{{ $index }}.team_a_score' placeholder='0'></label>
                                     <span>:</span>
-                                    <label class='member-field'><span>Tim B</span><input type='number' min='0' max='{{ in_array($resultGame->game_format, [\App\Models\Game::FORMAT_ONE_SET, \App\Models\Game::FORMAT_BEST_OF_THREE], true) ? 30 : 99 }}' wire:model='setScores.{{ $index }}.team_b_score' placeholder='0'></label>
+                                    <label class='member-field'><span>Tim B</span><input type='number' min='0' max='{{ $resultGame->point_target + 9 }}' wire:model='setScores.{{ $index }}.team_b_score' placeholder='0'></label>
                                     @error('setScores.'.$index.'.team_a_score') <small class='field-error'>{{ $message }}</small> @enderror
                                     @error('setScores.'.$index.'.team_b_score') <small class='field-error'>{{ $message }}</small> @enderror
                                 </fieldset>

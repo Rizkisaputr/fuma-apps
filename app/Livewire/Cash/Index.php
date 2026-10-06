@@ -77,14 +77,11 @@ class Index extends Component
             'description.max' => 'Keterangan maksimal 1000 karakter.',
         ]);
 
-        $allowedCodes = $validated['transactionType'] === 'income'
-            ? ['sponsorship']
-            : ['court_booking', 'shuttlecock', 'refreshment'];
         $category = CashCategory::query()
             ->whereKey($validated['categoryId'])
             ->where('type', $validated['transactionType'])
             ->where('is_active', true)
-            ->whereIn('code', $allowedCodes)
+            ->where('code', '!=', 'dues')
             ->first();
 
         if (! $category) {
@@ -170,9 +167,7 @@ class Index extends Component
             'categories' => CashCategory::query()
                 ->where('is_active', true)
                 ->where('type', $this->transactionType)
-                ->whereIn('code', $this->transactionType === 'income'
-                    ? ['sponsorship']
-                    : ['court_booking', 'shuttlecock', 'refreshment'])
+                ->where('code', '!=', 'dues')
                 ->orderBy('name')
                 ->get(),
             'totalIncome' => $totals['income'],

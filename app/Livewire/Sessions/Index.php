@@ -21,9 +21,13 @@ class Index extends Component
 
     public string $statusFilter = '';
 
+    public string $sessionTypeFilter = '';
+
     public bool $showCreateForm = false;
 
     public string $playDate = '';
+
+    public string $sessionType = PlaySession::TYPE_FUN_MATCH;
 
     public string $feeAmount = '15.000';
 
@@ -38,6 +42,11 @@ class Index extends Component
     }
 
     public function updatedStatusFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedSessionTypeFilter(): void
     {
         $this->resetPage();
     }
@@ -61,6 +70,7 @@ class Index extends Component
 
         $validated = $this->validate([
             'playDate' => ['required', 'date'],
+            'sessionType' => ['required', Rule::in(array_keys(PlaySession::typeOptions()))],
             'feeAmount' => ['required', 'integer', 'min:1', 'max:4294967295'],
             'courtCount' => ['required', 'integer', 'min:1', 'max:20'],
             'selectedMemberIds' => ['array'],
@@ -73,6 +83,8 @@ class Index extends Component
             ],
         ], [
             'playDate.required' => 'Tanggal sesi wajib diisi.',
+            'sessionType.required' => 'Jenis sesi wajib dipilih.',
+            'sessionType.in' => 'Jenis sesi tidak valid.',
             'feeAmount.required' => 'Nominal iuran wajib diisi.',
             'feeAmount.min' => 'Nominal iuran minimal Rp1.',
             'courtCount.required' => 'Jumlah lapangan wajib diisi.',
@@ -86,6 +98,7 @@ class Index extends Component
         $session = DB::transaction(function () use ($validated, $memberIds): PlaySession {
             $session = PlaySession::query()->create([
                 'play_date' => $validated['playDate'],
+                'session_type' => $validated['sessionType'],
                 'fee_amount' => $validated['feeAmount'],
                 'court_count' => $validated['courtCount'],
                 'status' => 'planned',
@@ -107,9 +120,40 @@ class Index extends Component
         $this->redirectRoute('sessions.show', ['playSession' => $session], navigate: true);
     }
 
+    public function deleteSession(int $sessionId): void
+    {
+        $this->resetErrorBag('deleteSession');
+
+        DB::transaction(function () use ($sessionId): void {
+            $session = PlaySession::query()->lockForUpdate()->findOrFail($sessionId);
+            $hasOperationalData = $session->games()->exists()
+                || $session->cashTransactions()->exists()
+                || $session->sessionMembers()->whereHas('cashTransaction')->exists()
+                || $session->sessionMembers()->whereNotNull('paid_at')->exists();
+
+            if ($hasOperationalData) {
+                $this->addError(
+                    'deleteSession',
+                    'Sesi tidak dapat dihapus karena sudah memiliki game, pembayaran, atau transaksi kas.',
+                );
+
+                return;
+            }
+
+            $session->sessionMembers()->delete();
+            $session->delete();
+        });
+
+        if (! $this->getErrorBag()->has('deleteSession')) {
+            session()->flash('session-message', 'Sesi berhasil dihapus.');
+            $this->resetPage();
+        }
+    }
+
     private function resetCreateForm(): void
     {
         $this->reset(['playDate', 'selectedMemberIds']);
+        $this->sessionType = PlaySession::TYPE_FUN_MATCH;
         $this->loadSessionDefaults();
         $this->resetValidation();
     }
@@ -133,6 +177,9 @@ class Index extends Component
             ->when(in_array($this->statusFilter, ['planned', 'active', 'completed'], true), function (Builder $query): void {
                 $query->where('status', $this->statusFilter);
             })
+            ->when(array_key_exists($this->sessionTypeFilter, PlaySession::typeOptions()), function (Builder $query): void {
+                $query->where('session_type', $this->sessionTypeFilter);
+            })
             ->orderByDesc('play_date')
             ->orderByDesc('id')
             ->paginate(10);
@@ -140,6 +187,7 @@ class Index extends Component
         return view('livewire.sessions.index', [
             'sessions' => $sessions,
             'activeMembers' => Member::query()->where('is_active', true)->orderBy('name')->get(),
+            'sessionTypes' => PlaySession::typeOptions(),
         ]);
     }
 }

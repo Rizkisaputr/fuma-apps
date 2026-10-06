@@ -39,6 +39,8 @@ class ReportManagementTest extends TestCase
             ->test(ReportIndex::class)
             ->set('calendarMonth', '2026-09')
             ->call('selectDate', '2026-09-10')
+            ->assertSee('+Rp250.000')
+            ->assertSee('-Rp50.000')
             ->assertViewHas('markedDays', fn ($days) => $days->has('2026-09-10') && ! $days->has('2026-10-01'))
             ->assertViewHas('selectedDay', fn ($report) => $report['income'] === 250000
                 && $report['expense'] === 50000
@@ -110,7 +112,7 @@ class ReportManagementTest extends TestCase
         $sessionExcel->assertOk()->assertDownload('laporan-sesi-2026-09-01_sampai_2026-09-30.xlsx');
         $sessionWorkbook = IOFactory::load($sessionExcel->baseResponse->getFile()->getPathname());
         $this->assertSame(6, $sessionWorkbook->getSheetByName('Ringkasan Sesi')->getHighestRow());
-        $this->assertSame(50000, (int) $sessionWorkbook->getSheetByName('Ringkasan Sesi')->getCell('E6')->getValue());
+        $this->assertSame(50000, (int) $sessionWorkbook->getSheetByName('Ringkasan Sesi')->getCell('F6')->getValue());
         $sessionWorkbook->disconnectWorksheets();
 
         $this->actingAs($user)

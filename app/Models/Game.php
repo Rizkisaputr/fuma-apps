@@ -71,8 +71,8 @@ class Game extends Model
     {
         return match ($this->game_format) {
             self::FORMAT_ONE_SET => '1 set × 21',
-            self::FORMAT_ROTATION => '2 set × 11 (tanpa rubber)',
-            self::FORMAT_BEST_OF_THREE => 'Best of 3 × 21',
+            self::FORMAT_ROTATION => 'Rotasi cepat · 2 set × '.$this->point_target.' (tanpa rubber)',
+            self::FORMAT_BEST_OF_THREE => 'Kompetisi Cepat · Best of 3 × '.$this->point_target,
             default => '1 set (data lama)',
         };
     }

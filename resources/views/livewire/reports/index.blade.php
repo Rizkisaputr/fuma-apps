@@ -20,7 +20,10 @@
                         @php($daySummary = $markedDays->get($dateKey))
                         <button class='calendar-day {{ $day->format('Y-m') !== $calendarMonth ? 'is-outside' : '' }} {{ $selectedDate === $dateKey ? 'is-selected' : '' }} {{ $daySummary ? 'has-transactions' : '' }}' type='button' wire:click="selectDate('{{ $dateKey }}')">
                             <span>{{ $day->day }}</span>
-                            @if ($daySummary)<small>{{ $daySummary['count'] }} transaksi</small><i aria-hidden='true'></i>@endif
+                            @if ($daySummary)
+                                <small class='calendar-day-income'>+Rp{{ number_format($daySummary['income'], 0, ',', '.') }}</small>
+                                <small class='calendar-day-expense'>-Rp{{ number_format($daySummary['expense'], 0, ',', '.') }}</small>
+                            @endif
                         </button>
                     @endforeach
                 </div>
@@ -57,8 +60,8 @@
             <section class='session-report-list'>
                 @forelse ($sessionReports as $report)
                     <article class='report-panel session-report-card' wire:key='session-report-{{ $report['session']->id }}'>
-                        <header><div><p class='eyebrow'>SESI MAIN</p><h2>{{ $report['session']->play_date->translatedFormat('d F Y') }}</h2></div><a href='{{ route('sessions.show', $report['session']) }}' wire:navigate>Lihat sesi</a></header>
-                        <div class='session-report-summary'><div><span>Hadir</span><strong>{{ $report['attendance_count'] }}</strong></div><div><span>Sudah bayar</span><strong>{{ $report['paid_count'] }}</strong></div><div><span>Belum bayar</span><strong>{{ $report['unpaid_count'] }}</strong></div><div><span>Iuran diterima</span><strong>Rp{{ number_format($report['dues_received'], 0, ',', '.') }}</strong></div></div>
+                        <header><div><p class='eyebrow'>{{ mb_strtoupper($report['session']->typeLabel()) }}</p><h2>{{ $report['session']->play_date->translatedFormat('d F Y') }}</h2>@if($report['session']->typeSubtitle())<small class='session-kind-note'>{{ $report['session']->typeSubtitle() }}</small>@endif</div><a href='{{ route('sessions.show', $report['session']) }}' wire:navigate>Lihat sesi</a></header>
+                        <div class='session-report-summary'><div><span>Hadir</span><strong>{{ $report['attendance_count'] }}</strong></div><div><span>Admin bertugas</span><strong>{{ $report['duty_admin_count'] }}</strong></div><div><span>Sudah bayar</span><strong>{{ $report['paid_count'] }}</strong></div><div><span>Belum bayar</span><strong>{{ $report['unpaid_count'] }}</strong></div><div><span>Iuran diterima</span><strong>Rp{{ number_format($report['dues_received'], 0, ',', '.') }}</strong></div></div>
                         <div class='session-report-columns'>
                             <div><h3>Daftar game</h3>@forelse ($report['games'] as $game)@php($teamA = $game->gamePlayers->where('team', 'A')->pluck('member.name')->filter()->join(' & '))@php($teamB = $game->gamePlayers->where('team', 'B')->pluck('member.name')->filter()->join(' & '))<article class='report-game-row'><span>Game {{ $game->game_number }}</span><div><strong>{{ $teamA ?: 'Belum lengkap' }}</strong><small>vs</small><strong>{{ $teamB ?: 'Belum lengkap' }}</strong><small>{{ $game->scoreSummary() }}</small></div><b>{{ $game->resultLabel() }}</b></article>@empty<div class='report-empty report-empty--small'>Belum ada game.</div>@endforelse</div>
                             <div><h3>Jumlah main per member</h3>@forelse ($report['member_game_counts'] as $memberCount)<div class='member-game-count'><span>{{ $memberCount['member'] }}</span><strong>{{ $memberCount['count'] }} game</strong></div>@empty<div class='report-empty report-empty--small'>Belum ada data permainan.</div>@endforelse</div>

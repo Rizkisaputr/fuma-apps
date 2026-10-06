@@ -104,7 +104,8 @@ class ReportService
             ->orderBy('id')
             ->get()
             ->map(function (PlaySession $session): array {
-                $paid = $session->sessionMembers->whereNotNull('paid_at')->count();
+                $billableAttendances = $session->sessionMembers->where('is_duty_admin', false);
+                $paid = $billableAttendances->whereNotNull('paid_at')->count();
                 $gameCounts = $session->games
                     ->flatMap->gamePlayers
                     ->groupBy('member_id')
@@ -119,7 +120,8 @@ class ReportService
                     'session' => $session,
                     'attendance_count' => $session->sessionMembers->count(),
                     'paid_count' => $paid,
-                    'unpaid_count' => $session->sessionMembers->count() - $paid,
+                    'unpaid_count' => $billableAttendances->count() - $paid,
+                    'duty_admin_count' => $session->sessionMembers->where('is_duty_admin', true)->count(),
                     'dues_received' => (int) $session->cashTransactions
                         ->filter(fn (CashTransaction $transaction): bool => $transaction->play_session_member_id !== null
                             && $transaction->cashCategory?->code === 'dues'
@@ -150,6 +152,7 @@ class ReportService
             'unpaidAttendances' => PlaySession::query()
                 ->join('play_session_members', 'play_session_members.play_session_id', '=', 'play_sessions.id')
                 ->whereNull('play_session_members.paid_at')
+                ->where('play_session_members.is_duty_admin', false)
                 ->count(),
             'latestSession' => PlaySession::query()->withCount('sessionMembers')->orderByDesc('play_date')->first(),
         ];

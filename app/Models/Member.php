@@ -27,7 +27,7 @@ class Member extends Model
     public function playSessions(): BelongsToMany
     {
         return $this->belongsToMany(PlaySession::class, 'play_session_members')
-            ->withPivot(['id', 'attended_at', 'fee_amount', 'paid_at'])
+            ->withPivot(['id', 'attended_at', 'fee_amount', 'paid_at', 'is_duty_admin'])
             ->withTimestamps();
     }
 

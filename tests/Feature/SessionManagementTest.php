@@ -51,11 +51,88 @@ class SessionManagementTest extends TestCase
             ->assertHasNoErrors();
 
         $this->assertDatabaseHas('play_sessions', [
+            'session_type' => PlaySession::TYPE_FUN_MATCH,
             'fee_amount' => 15000,
             'court_count' => 1,
             'status' => 'planned',
         ]);
         $this->assertTrue(PlaySession::query()->whereDate('play_date', '2026-10-03')->exists());
+        $session = PlaySession::query()->firstOrFail();
+        $this->assertSame('Fun Match', $session->typeLabel());
+        $this->assertSame('Main Sesama Member FUMA', $session->typeSubtitle());
+    }
+
+    public function test_admin_can_create_and_filter_a_session_type(): void
+    {
+        Livewire::actingAs(User::factory()->create())
+            ->test(Index::class)
+            ->call('openCreateForm')
+            ->set('playDate', '2026-10-03')
+            ->set('sessionType', PlaySession::TYPE_INTERNAL_TOURNAMENT)
+            ->call('createSession')
+            ->assertHasNoErrors();
+
+        $session = PlaySession::query()->firstOrFail();
+        $this->assertSame('Turnamen internal FUMA', $session->typeLabel());
+        $this->assertDatabaseHas('play_sessions', [
+            'session_type' => PlaySession::TYPE_INTERNAL_TOURNAMENT,
+        ]);
+
+        Livewire::actingAs(User::factory()->create())
+            ->test(Index::class)
+            ->set('sessionTypeFilter', PlaySession::TYPE_INTERNAL_TOURNAMENT)
+            ->assertViewHas('sessions', fn ($sessions) => $sessions->total() === 1)
+            ->set('sessionTypeFilter', PlaySession::TYPE_FUN_MATCH)
+            ->assertViewHas('sessions', fn ($sessions) => $sessions->total() === 0);
+    }
+
+    public function test_admin_can_update_type_of_existing_session(): void
+    {
+        $session = PlaySession::query()->create(['play_date' => '2026-10-03']);
+
+        Livewire::actingAs(User::factory()->create())
+            ->test(Show::class, ['playSession' => $session])
+            ->call('openSessionTypeForm')
+            ->set('sessionType', PlaySession::TYPE_INTERNAL_TOURNAMENT)
+            ->call('saveSessionType')
+            ->assertHasNoErrors()
+            ->assertSee('Turnamen internal FUMA');
+
+        $this->assertDatabaseHas('play_sessions', [
+            'id' => $session->id,
+            'session_type' => PlaySession::TYPE_INTERNAL_TOURNAMENT,
+        ]);
+    }
+
+    public function test_admin_can_delete_session_and_its_unpaid_attendance(): void
+    {
+        [$session, , $attendance] = $this->attendanceFixture();
+
+        Livewire::actingAs(User::factory()->create())
+            ->test(Index::class)
+            ->call('deleteSession', $session->id)
+            ->assertHasNoErrors('deleteSession');
+
+        $this->assertDatabaseMissing('play_session_members', ['id' => $attendance->id]);
+        $this->assertDatabaseMissing('play_sessions', ['id' => $session->id]);
+    }
+
+    public function test_session_with_operational_data_cannot_be_deleted(): void
+    {
+        $session = PlaySession::query()->create(['play_date' => '2026-10-09']);
+        Game::query()->create([
+            'play_session_id' => $session->id,
+            'game_number' => 1,
+            'status' => 'waiting',
+        ]);
+
+        Livewire::actingAs(User::factory()->create())
+            ->test(Index::class)
+            ->call('deleteSession', $session->id)
+            ->assertHasErrors('deleteSession');
+
+        $this->assertDatabaseHas('play_sessions', ['id' => $session->id]);
+        $this->assertDatabaseHas('games', ['play_session_id' => $session->id]);
     }
 
     public function test_session_fee_is_copied_to_attendance_created_with_session(): void

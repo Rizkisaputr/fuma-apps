@@ -7,6 +7,8 @@ use App\Models\CashCategory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -26,6 +28,14 @@ class Index extends Component
 
     /** @var array<int, array{name: string, icon: string, color: string}> */
     public array $categories = [];
+
+    public string $newCategoryType = 'income';
+
+    public string $newCategoryName = '';
+
+    public string $newCategoryIcon = '';
+
+    public string $newCategoryColor = '#2a8a5d';
 
     public function mount(): void
     {
@@ -96,15 +106,33 @@ class Index extends Component
     {
         $this->validate([
             'categories' => ['required', 'array'],
-            'categories.*.name' => ['required', 'string', 'max:100', 'distinct:ignore_case'],
+            'categories.*.name' => ['required', 'string', 'max:100'],
             'categories.*.icon' => ['nullable', 'string', 'max:10'],
             'categories.*.color' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
         ], [
             'categories.*.name.required' => 'Nama kategori wajib diisi.',
-            'categories.*.name.distinct' => 'Nama kategori tidak boleh sama.',
             'categories.*.icon.max' => 'Ikon maksimal 10 karakter.',
             'categories.*.color.regex' => 'Warna kategori tidak valid.',
         ]);
+
+        $categoryTypes = CashCategory::query()->pluck('type', 'id');
+        $seenNames = [];
+        $hasDuplicateName = false;
+
+        foreach ($this->categories as $categoryId => $category) {
+            $key = $categoryTypes->get($categoryId).'|'.Str::lower(trim($category['name']));
+
+            if (isset($seenNames[$key])) {
+                $this->addError('categories.'.$categoryId.'.name', 'Nama kategori tidak boleh sama dalam jenis transaksi yang sama.');
+                $hasDuplicateName = true;
+            }
+
+            $seenNames[$key] = true;
+        }
+
+        if ($hasDuplicateName) {
+            return;
+        }
 
         DB::transaction(function (): void {
             CashCategory::query()->lockForUpdate()->get()->each(function (CashCategory $category): void {
@@ -124,6 +152,56 @@ class Index extends Component
 
         $this->loadCategories();
         session()->flash('settings-message', 'Kategori kas berhasil diperbarui tanpa mengubah jenis transaksi.');
+    }
+
+    public function updatedNewCategoryType(): void
+    {
+        $this->newCategoryColor = $this->newCategoryType === 'income' ? '#2a8a5d' : '#b6654a';
+    }
+
+    public function addCategory(): void
+    {
+        $validated = $this->validate([
+            'newCategoryType' => ['required', Rule::in(['income', 'expense'])],
+            'newCategoryName' => [
+                'required',
+                'string',
+                'max:100',
+                Rule::unique('cash_categories', 'name')->where(
+                    fn ($query) => $query->where('type', $this->newCategoryType),
+                ),
+            ],
+            'newCategoryIcon' => ['nullable', 'string', 'max:10'],
+            'newCategoryColor' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+        ], [
+            'newCategoryName.required' => 'Nama kategori wajib diisi.',
+            'newCategoryName.unique' => 'Kategori dengan nama tersebut sudah ada untuk jenis ini.',
+            'newCategoryIcon.max' => 'Ikon maksimal 10 karakter.',
+            'newCategoryColor.regex' => 'Warna kategori tidak valid.',
+        ]);
+
+        $baseCode = 'custom_'.Str::slug($validated['newCategoryName'], '_');
+        $code = $baseCode;
+        $suffix = 2;
+
+        while (CashCategory::query()->where('code', $code)->exists()) {
+            $code = $baseCode.'_'.$suffix++;
+        }
+
+        CashCategory::query()->create([
+            'code' => $code,
+            'name' => trim($validated['newCategoryName']),
+            'type' => $validated['newCategoryType'],
+            'icon' => trim($validated['newCategoryIcon']) ?: null,
+            'color' => $validated['newCategoryColor'],
+            'is_active' => true,
+        ]);
+
+        $this->reset(['newCategoryName', 'newCategoryIcon']);
+        $this->newCategoryColor = $this->newCategoryType === 'income' ? '#2a8a5d' : '#b6654a';
+        $this->resetValidation(['newCategoryType', 'newCategoryName', 'newCategoryIcon', 'newCategoryColor']);
+        $this->loadCategories();
+        session()->flash('settings-message', 'Kategori kas baru berhasil ditambahkan.');
     }
 
     private function loadCategories(): void

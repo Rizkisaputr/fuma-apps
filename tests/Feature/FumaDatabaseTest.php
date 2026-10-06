@@ -160,8 +160,10 @@ class FumaDatabaseTest extends TestCase
         $this->seed(CashCategorySeeder::class);
         $this->seed(CashCategorySeeder::class);
 
-        $this->assertDatabaseCount('cash_categories', 5);
+        $this->assertDatabaseCount('cash_categories', 7);
         $this->assertDatabaseHas('cash_categories', ['name' => 'Iuran', 'type' => 'income']);
         $this->assertDatabaseHas('cash_categories', ['name' => 'Refreshment', 'type' => 'expense']);
+        $this->assertDatabaseHas('cash_categories', ['code' => 'other_income', 'name' => 'Lain-lain', 'type' => 'income']);
+        $this->assertDatabaseHas('cash_categories', ['code' => 'other_expense', 'name' => 'Lain-lain', 'type' => 'expense']);
     }
 }

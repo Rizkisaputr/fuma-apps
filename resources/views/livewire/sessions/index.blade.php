@@ -11,6 +11,11 @@
         </button>
     </header>
 
+    @if (session('session-message'))
+        <div class='member-alert' role='status'><span class='status-dot' aria-hidden='true'></span>{{ session('session-message') }}</div>
+    @endif
+    @error('deleteSession') <div class='session-error session-error--standalone' role='alert'>{{ $message }}</div> @enderror
+
     <section class='session-filter-bar'>
         <label class='filter-control'>
             <span>Status sesi</span>
@@ -19,6 +24,13 @@
                 <option value='planned'>Terencana</option>
                 <option value='active'>Aktif</option>
                 <option value='completed'>Selesai</option>
+            </select>
+        </label>
+        <label class='filter-control'>
+            <span>Jenis sesi</span>
+            <select wire:model.live='sessionTypeFilter'>
+                <option value=''>Semua jenis</option>
+                @foreach ($sessionTypes as $value => $label)<option value='{{ $value }}'>{{ $label }}</option>@endforeach
             </select>
         </label>
     </section>
@@ -34,9 +46,9 @@
         @if ($sessions->isEmpty())
             <div class='member-empty'>
                 <div class='member-empty-icon' aria-hidden='true'><x-nav-icon name='sessions' /></div>
-                <h3>{{ $statusFilter ? 'Sesi tidak ditemukan' : 'Belum ada sesi main' }}</h3>
-                <p>{{ $statusFilter ? 'Tidak ada sesi dengan status yang dipilih.' : 'Buat sesi pertama untuk mulai mencatat kehadiran member.' }}</p>
-                @if (! $statusFilter)
+                <h3>{{ $statusFilter || $sessionTypeFilter ? 'Sesi tidak ditemukan' : 'Belum ada sesi main' }}</h3>
+                <p>{{ $statusFilter || $sessionTypeFilter ? 'Tidak ada sesi dengan filter yang dipilih.' : 'Buat sesi pertama untuk mulai mencatat kehadiran member.' }}</p>
+                @if (! $statusFilter && ! $sessionTypeFilter)
                     <button class='secondary-action' type='button' wire:click='openCreateForm'>Buat sesi pertama</button>
                 @endif
             </div>
@@ -46,6 +58,7 @@
                     <thead>
                         <tr>
                             <th>Tanggal</th>
+                            <th>Jenis Sesi</th>
                             <th>Status</th>
                             <th>Hadir</th>
                             <th>Iuran</th>
@@ -61,11 +74,12 @@
                                     <strong>{{ $session->play_date->translatedFormat('d F Y') }}</strong>
                                     <span>{{ $session->play_date->translatedFormat('l') }}</span>
                                 </td>
+                                <td class='session-kind-cell'><strong>{{ $session->typeLabel() }}</strong>@if($session->typeSubtitle())<em>{{ $session->typeSubtitle() }}</em>@endif</td>
                                 <td><span class='session-status session-status--{{ $session->status }}'>{{ $statusLabel }}</span></td>
                                 <td>{{ $session->session_members_count }} member</td>
                                 <td>Rp{{ number_format($session->fee_amount, 0, ',', '.') }}</td>
                                 <td>{{ $session->court_count }}</td>
-                                <td><a class='detail-link' href='{{ route('sessions.show', $session) }}' wire:navigate>Kelola <span aria-hidden='true'>→</span></a></td>
+                                <td><div class='session-row-actions'><a class='detail-link' href='{{ route('sessions.show', $session) }}' wire:navigate>Kelola <span aria-hidden='true'>→</span></a><button class='session-delete-button' type='button' wire:click='deleteSession({{ $session->id }})' wire:confirm='Hapus sesi ini? Absensi yang belum dibayar juga akan dihapus.'>Hapus</button></div></td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -75,17 +89,21 @@
             <div class='session-card-list'>
                 @foreach ($sessions as $session)
                     @php($statusLabel = match ($session->status) { 'planned' => 'Terencana', 'active' => 'Aktif', 'completed' => 'Selesai' })
-                    <a class='session-card' href='{{ route('sessions.show', $session) }}' wire:navigate wire:key='session-card-{{ $session->id }}'>
-                        <div class='session-card-top'>
-                            <div><strong>{{ $session->play_date->translatedFormat('d F Y') }}</strong><span>{{ $session->play_date->translatedFormat('l') }}</span></div>
-                            <span class='session-status session-status--{{ $session->status }}'>{{ $statusLabel }}</span>
-                        </div>
-                        <dl>
-                            <div><dt>Hadir</dt><dd>{{ $session->session_members_count }} member</dd></div>
-                            <div><dt>Iuran</dt><dd>Rp{{ number_format($session->fee_amount, 0, ',', '.') }}</dd></div>
-                            <div><dt>Lapangan</dt><dd>{{ $session->court_count }}</dd></div>
-                        </dl>
-                    </a>
+                    <article class='session-card' wire:key='session-card-{{ $session->id }}'>
+                        <a class='session-card-main' href='{{ route('sessions.show', $session) }}' wire:navigate>
+                            <div class='session-card-top'>
+                                <div><strong>{{ $session->play_date->translatedFormat('d F Y') }}</strong><span>{{ $session->play_date->translatedFormat('l') }}</span></div>
+                                <span class='session-status session-status--{{ $session->status }}'>{{ $statusLabel }}</span>
+                            </div>
+                            <div class='session-card-kind'><strong>{{ $session->typeLabel() }}</strong>@if($session->typeSubtitle())<em>{{ $session->typeSubtitle() }}</em>@endif</div>
+                            <dl>
+                                <div><dt>Hadir</dt><dd>{{ $session->session_members_count }} member</dd></div>
+                                <div><dt>Iuran</dt><dd>Rp{{ number_format($session->fee_amount, 0, ',', '.') }}</dd></div>
+                                <div><dt>Lapangan</dt><dd>{{ $session->court_count }}</dd></div>
+                            </dl>
+                        </a>
+                        <button class='session-delete-button session-delete-button--mobile' type='button' wire:click='deleteSession({{ $session->id }})' wire:confirm='Hapus sesi ini? Absensi yang belum dibayar juga akan dihapus.'>Hapus sesi</button>
+                    </article>
                 @endforeach
             </div>
 
@@ -109,6 +127,13 @@
                             <span>Tanggal main</span>
                             <input wire:model='playDate' type='date'>
                             @error('playDate') <small>{{ $message }}</small> @enderror
+                        </label>
+                        <label class='member-field'>
+                            <span>Jenis sesi</span>
+                            <select wire:model='sessionType'>
+                                @foreach ($sessionTypes as $value => $label)<option value='{{ $value }}'>{{ $label }}</option>@endforeach
+                            </select>
+                            @error('sessionType') <small>{{ $message }}</small> @enderror
                         </label>
                         <label class='member-field'>
                             <span>Iuran per orang</span>

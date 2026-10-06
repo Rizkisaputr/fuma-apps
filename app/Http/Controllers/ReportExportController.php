@@ -76,21 +76,22 @@ class ReportExportController extends Controller
         $spreadsheet = new Spreadsheet;
         $summary = $spreadsheet->getActiveSheet();
         $summary->setTitle('Ringkasan Sesi');
-        $this->sheetTitle($summary, 'Laporan Sesi '.$appSettings->app_name, $from, $to, 'F');
-        $summary->fromArray(['Tanggal', 'Hadir', 'Sudah Bayar', 'Belum Bayar', 'Iuran Diterima', 'Jumlah Game'], null, 'A5');
+        $this->sheetTitle($summary, 'Laporan Sesi '.$appSettings->app_name, $from, $to, 'G');
+        $summary->fromArray(['Tanggal', 'Hadir', 'Admin Bertugas', 'Sudah Bayar', 'Belum Bayar', 'Iuran Diterima', 'Jumlah Game'], null, 'A5');
         $row = 6;
         foreach ($sessionReports as $report) {
             $summary->setCellValue("A{$row}", Date::PHPToExcel($report['session']->play_date));
             $summary->setCellValue("B{$row}", $report['attendance_count']);
-            $summary->setCellValue("C{$row}", $report['paid_count']);
-            $summary->setCellValue("D{$row}", $report['unpaid_count']);
-            $summary->setCellValue("E{$row}", $report['dues_received']);
-            $summary->setCellValue("F{$row}", $report['games']->count());
+            $summary->setCellValue("C{$row}", $report['duty_admin_count']);
+            $summary->setCellValue("D{$row}", $report['paid_count']);
+            $summary->setCellValue("E{$row}", $report['unpaid_count']);
+            $summary->setCellValue("F{$row}", $report['dues_received']);
+            $summary->setCellValue("G{$row}", $report['games']->count());
             $row++;
         }
-        $this->tableHeader($summary, 'A5:F5');
+        $this->tableHeader($summary, 'A5:G5');
         $summary->getStyle('A6:A'.max(6, $row - 1))->getNumberFormat()->setFormatCode('dd mmmm yyyy');
-        $summary->getStyle('E6:E'.max(6, $row - 1))->getNumberFormat()->setFormatCode('Rp #,##0');
+        $summary->getStyle('F6:F'.max(6, $row - 1))->getNumberFormat()->setFormatCode('Rp #,##0');
 
         $attendance = $spreadsheet->createSheet();
         $attendance->setTitle('Kehadiran');
@@ -101,8 +102,8 @@ class ReportExportController extends Controller
             foreach ($report['attendances'] as $presence) {
                 $attendance->setCellValue("A{$row}", Date::PHPToExcel($report['session']->play_date));
                 $attendance->setCellValue("B{$row}", $presence->member?->name ?? 'Member terhapus');
-                $attendance->setCellValue("C{$row}", $presence->paid_at ? 'Sudah bayar' : 'Belum bayar');
-                $attendance->setCellValue("D{$row}", $presence->fee_amount);
+                $attendance->setCellValue("C{$row}", $presence->is_duty_admin ? 'Admin bertugas - bebas iuran' : ($presence->paid_at ? 'Sudah bayar' : 'Belum bayar'));
+                $attendance->setCellValue("D{$row}", $presence->is_duty_admin ? 0 : $presence->fee_amount);
                 $row++;
             }
         }
