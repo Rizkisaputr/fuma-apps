@@ -194,6 +194,73 @@ class CashManagementTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_edit_a_manual_cash_transaction(): void
+    {
+        $sponsorship = CashCategory::query()->where('name', 'Sponsorship')->firstOrFail();
+        $booking = CashCategory::query()->where('name', 'Booking Court')->firstOrFail();
+        $transaction = CashTransaction::query()->create([
+            'cash_category_id' => $sponsorship->id,
+            'transaction_date' => '2026-10-10',
+            'amount' => 300000,
+            'description' => 'Input awal',
+        ]);
+
+        Livewire::actingAs(User::factory()->create())
+            ->test(CashIndex::class)
+            ->call('editTransaction', $transaction->id)
+            ->assertSet('showForm', true)
+            ->assertSet('editingTransactionId', $transaction->id)
+            ->assertSet('transactionType', 'income')
+            ->assertSet('categoryId', $sponsorship->id)
+            ->assertSet('transactionDate', '2026-10-10')
+            ->assertSet('amount', '300000')
+            ->assertSet('description', 'Input awal')
+            ->set('transactionType', 'expense')
+            ->set('categoryId', $booking->id)
+            ->set('transactionDate', '2026-10-12')
+            ->set('amount', '125.000')
+            ->set('description', 'Koreksi booking court')
+            ->call('saveTransaction')
+            ->assertHasNoErrors()
+            ->assertSet('showForm', false)
+            ->assertSet('editingTransactionId', null);
+
+        $this->assertDatabaseCount('cash_transactions', 1);
+        $this->assertDatabaseHas('cash_transactions', [
+            'id' => $transaction->id,
+            'cash_category_id' => $booking->id,
+            'transaction_date' => '2026-10-12 00:00:00',
+            'amount' => 125000,
+            'description' => 'Koreksi booking court',
+        ]);
+    }
+
+    public function test_automatic_dues_transaction_cannot_be_edited_from_cash_page(): void
+    {
+        [$session, $attendance] = $this->attendanceFixture();
+        $user = User::factory()->create();
+
+        Livewire::actingAs($user)
+            ->test(SessionShow::class, ['playSession' => $session])
+            ->call('markAsPaid', $attendance->id);
+
+        $transaction = CashTransaction::query()
+            ->where('play_session_member_id', $attendance->id)
+            ->firstOrFail();
+
+        Livewire::actingAs($user)
+            ->test(CashIndex::class)
+            ->assertDontSeeHtml("wire:click='editTransaction({$transaction->id})'")
+            ->call('editTransaction', $transaction->id)
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('cash_transactions', [
+            'id' => $transaction->id,
+            'cash_category_id' => $transaction->cash_category_id,
+            'amount' => $transaction->amount,
+        ]);
+    }
+
     public function test_manual_transaction_validates_positive_amount_and_matching_category(): void
     {
         $booking = CashCategory::query()->where('name', 'Booking Court')->firstOrFail();

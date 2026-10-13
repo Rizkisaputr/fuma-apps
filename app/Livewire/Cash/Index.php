@@ -19,6 +19,8 @@ class Index extends Component
 
     public bool $showForm = false;
 
+    public ?int $editingTransactionId = null;
+
     public string $transactionType = 'income';
 
     public int|string $categoryId = '';
@@ -47,6 +49,24 @@ class Index extends Component
     public function openForm(): void
     {
         $this->resetTransactionForm();
+        $this->showForm = true;
+    }
+
+    public function editTransaction(int $transactionId): void
+    {
+        $transaction = CashTransaction::query()
+            ->with('cashCategory')
+            ->whereNull('play_session_id')
+            ->whereNull('play_session_member_id')
+            ->findOrFail($transactionId);
+
+        $this->editingTransactionId = $transaction->id;
+        $this->transactionType = $transaction->cashCategory->type;
+        $this->categoryId = $transaction->cash_category_id;
+        $this->transactionDate = $transaction->transaction_date->toDateString();
+        $this->amount = (string) $transaction->amount;
+        $this->description = $transaction->description ?? '';
+        $this->resetValidation();
         $this->showForm = true;
     }
 
@@ -90,14 +110,26 @@ class Index extends Component
             return;
         }
 
-        CashTransaction::query()->create([
+        $transaction = $this->editingTransactionId === null
+            ? new CashTransaction
+            : CashTransaction::query()
+                ->whereNull('play_session_id')
+                ->whereNull('play_session_member_id')
+                ->findOrFail($this->editingTransactionId);
+
+        $transaction->fill([
             'cash_category_id' => $category->id,
             'transaction_date' => $validated['transactionDate'],
             'amount' => $validated['amount'],
             'description' => trim($validated['description']) ?: null,
-        ]);
+        ])->save();
 
-        session()->flash('cash-message', 'Transaksi kas berhasil dicatat.');
+        session()->flash(
+            'cash-message',
+            $this->editingTransactionId === null
+                ? 'Transaksi kas berhasil dicatat.'
+                : 'Transaksi kas berhasil diperbarui.',
+        );
         $this->closeForm();
         $this->resetPage();
     }
@@ -125,6 +157,7 @@ class Index extends Component
 
     private function resetTransactionForm(): void
     {
+        $this->editingTransactionId = null;
         $this->transactionType = 'income';
         $this->categoryId = '';
         $this->transactionDate = now(config('app.display_timezone'))->toDateString();

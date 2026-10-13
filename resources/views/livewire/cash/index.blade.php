@@ -35,7 +35,7 @@
         @else
             <div class='cash-table-wrap'>
                 <table class='cash-table'>
-                    <thead><tr><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th>Jenis</th><th>Nominal</th></tr></thead>
+                    <thead><tr><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th>Jenis</th><th>Nominal</th><th><span class='sr-only'>Aksi</span></th></tr></thead>
                     <tbody>
                         @foreach ($transactions as $transaction)
                             <tr wire:key='cash-row-{{ $transaction->id }}'>
@@ -44,6 +44,11 @@
                                 <td>{{ $transaction->description ?: '-' }}</td>
                                 <td><span class='cash-type cash-type--{{ $transaction->cashCategory->type }}'>{{ $transaction->cashCategory->type === 'income' ? 'Pemasukan' : 'Pengeluaran' }}</span></td>
                                 <td class='cash-amount cash-amount--{{ $transaction->cashCategory->type }}'>{{ $transaction->cashCategory->type === 'income' ? '+' : '-' }}Rp{{ number_format($transaction->amount, 0, ',', '.') }}</td>
+                                <td>
+                                    @if (! $transaction->play_session_id && ! $transaction->play_session_member_id)
+                                        <div class='row-actions'><button type='button' wire:click='editTransaction({{ $transaction->id }})'>Edit</button></div>
+                                    @endif
+                                </td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -56,6 +61,9 @@
                         <header><div><span class='category-icon' style='--category-color: {{ $transaction->cashCategory->color ?: ($transaction->cashCategory->type === 'income' ? '#2a8a5d' : '#b6654a') }}'>{{ $transaction->cashCategory->icon ?: '•' }}</span><strong>{{ $transaction->cashCategory->name }}</strong>@if ($transaction->play_session_member_id)<span class='automatic-badge'>Otomatis</span>@endif</div><span>{{ $transaction->transaction_date->translatedFormat('d M Y') }}</span></header>
                         <p>{{ $transaction->description ?: 'Tanpa keterangan' }}</p>
                         <footer><span class='cash-type cash-type--{{ $transaction->cashCategory->type }}'>{{ $transaction->cashCategory->type === 'income' ? 'Pemasukan' : 'Pengeluaran' }}</span><strong class='cash-amount--{{ $transaction->cashCategory->type }}'>{{ $transaction->cashCategory->type === 'income' ? '+' : '-' }}Rp{{ number_format($transaction->amount, 0, ',', '.') }}</strong></footer>
+                        @if (! $transaction->play_session_id && ! $transaction->play_session_member_id)
+                            <div class='row-actions cash-card-actions'><button type='button' wire:click='editTransaction({{ $transaction->id }})'>Edit transaksi</button></div>
+                        @endif
                     </article>
                 @endforeach
             </div>
@@ -67,7 +75,7 @@
     @if ($showForm)
         <div class='member-modal-backdrop' wire:click.self='closeForm'>
             <section class='member-modal cash-modal' role='dialog' aria-modal='true' aria-labelledby='cash-form-title'>
-                <header><div><p class='eyebrow'>TRANSAKSI MANUAL</p><h2 id='cash-form-title'>Catat Transaksi</h2></div><button class='modal-close' type='button' wire:click='closeForm' aria-label='Tutup formulir'>&times;</button></header>
+                <header><div><p class='eyebrow'>{{ $editingTransactionId ? 'KOREKSI TRANSAKSI' : 'TRANSAKSI MANUAL' }}</p><h2 id='cash-form-title'>{{ $editingTransactionId ? 'Edit Transaksi' : 'Catat Transaksi' }}</h2></div><button class='modal-close' type='button' wire:click='closeForm' aria-label='Tutup formulir'>&times;</button></header>
                 <form wire:submit='saveTransaction'>
                     <fieldset class='cash-type-options'>
                         <legend>Jenis transaksi</legend>
@@ -81,7 +89,7 @@
                         <label class='member-field'><span>Nominal</span><x-formatted-money-input model='amount' placeholder='Contoh: 150.000' />@error('amount') <small>{{ $message }}</small> @enderror</label>
                     </div>
                     <label class='member-field'><span>Keterangan <small>(opsional)</small></span><textarea wire:model='description' rows='3' maxlength='1000' placeholder='Tambahkan catatan transaksi'></textarea>@error('description') <small>{{ $message }}</small> @enderror</label>
-                    <div class='modal-actions'><button class='cancel-action' type='button' wire:click='closeForm'>Batal</button><button class='primary-action' type='submit' wire:loading.attr='disabled'><span wire:loading.remove wire:target='saveTransaction'>Simpan Transaksi</span><span wire:loading wire:target='saveTransaction'>Menyimpan&hellip;</span></button></div>
+                    <div class='modal-actions'><button class='cancel-action' type='button' wire:click='closeForm'>Batal</button><button class='primary-action' type='submit' wire:loading.attr='disabled'><span wire:loading.remove wire:target='saveTransaction'>{{ $editingTransactionId ? 'Simpan Perubahan' : 'Simpan Transaksi' }}</span><span wire:loading wire:target='saveTransaction'>Menyimpan&hellip;</span></button></div>
                 </form>
             </section>
         </div>
