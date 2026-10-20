@@ -324,6 +324,8 @@
 
     @if ($resultGameId && $resultGame)
         @php($winnerPlayers = $resultGame->winner_team ? $resultGame->gamePlayers->where('team', $resultGame->winner_team)->pluck('member.name')->filter()->join(' & ') : '')
+        @php($resultTeamAName = $resultGame->gamePlayers->where('team', 'A')->pluck('member.name')->filter()->join(' & '))
+        @php($resultTeamBName = $resultGame->gamePlayers->where('team', 'B')->pluck('member.name')->filter()->join(' & '))
         <div class='member-modal-backdrop' wire:click.self='closeResultForm'>
             <section class='member-modal result-modal' role='dialog' aria-modal='true' aria-labelledby='result-form-title'>
                 <header>
@@ -354,8 +356,8 @@
                     @if ($resultGame->game_format === \App\Models\Game::FORMAT_SINGLE_SET)
                         <fieldset class='winner-options'>
                             <legend>Tim pemenang</legend>
-                            <label><input type='radio' wire:model='winnerTeam' value='A'><span><strong>Tim A</strong><small>Pemenang game</small></span></label>
-                            <label><input type='radio' wire:model='winnerTeam' value='B'><span><strong>Tim B</strong><small>Pemenang game</small></span></label>
+                            <label><input type='radio' wire:model='winnerTeam' value='A'><span><strong>{{ $resultTeamAName }}</strong><small>Tim A &middot; Pemenang game</small></span></label>
+                            <label><input type='radio' wire:model='winnerTeam' value='B'><span><strong>{{ $resultTeamBName }}</strong><small>Tim B &middot; Pemenang game</small></span></label>
                         </fieldset>
                         @error('winnerTeam') <small class='field-error'>{{ $message }}</small> @enderror
                         <div class='score-fields'>
@@ -372,9 +374,9 @@
                             @foreach ($setScores as $index => $setScore)
                                 <fieldset class='set-score-row' wire:key='set-score-{{ $index }}'>
                                     <legend>Set {{ $index + 1 }} {{ $resultGame->game_format === \App\Models\Game::FORMAT_BEST_OF_THREE && $index === 2 ? '· Rubber bila 1–1' : '' }}</legend>
-                                    <label class='member-field'><span>Tim A</span><input type='number' min='0' max='{{ $resultGame->point_target + 9 }}' wire:model='setScores.{{ $index }}.team_a_score' placeholder='0'></label>
+                                    <label class='member-field'><span><small>Tim A</small><strong>{{ $resultTeamAName }}</strong></span><input type='number' min='0' max='{{ $resultGame->point_target + 9 }}' wire:model='setScores.{{ $index }}.team_a_score' placeholder='0'></label>
                                     <span>:</span>
-                                    <label class='member-field'><span>Tim B</span><input type='number' min='0' max='{{ $resultGame->point_target + 9 }}' wire:model='setScores.{{ $index }}.team_b_score' placeholder='0'></label>
+                                    <label class='member-field'><span><small>Tim B</small><strong>{{ $resultTeamBName }}</strong></span><input type='number' min='0' max='{{ $resultGame->point_target + 9 }}' wire:model='setScores.{{ $index }}.team_b_score' placeholder='0'></label>
                                     @error('setScores.'.$index.'.team_a_score') <small class='field-error'>{{ $message }}</small> @enderror
                                     @error('setScores.'.$index.'.team_b_score') <small class='field-error'>{{ $message }}</small> @enderror
                                 </fieldset>

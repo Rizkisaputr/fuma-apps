@@ -149,6 +149,20 @@ class GameManagementTest extends TestCase
             ->assertDontSee('Set dimenangkan pada 15 poin');
     }
 
+    public function test_result_form_shows_the_player_names_for_each_team(): void
+    {
+        [$session, $members] = $this->sessionWithAttendees(4);
+        $component = $this->sessionComponent($session);
+        $this->saveGame($component, $members);
+        $game = Game::query()->firstOrFail();
+
+        $component->call('startGame', $game->id)
+            ->call('openResultForm', $game->id)
+            ->assertSee('Catat Skor per Set')
+            ->assertSee('Pemain 1 & Pemain 2')
+            ->assertSee('Pemain 3 & Pemain 4');
+    }
+
     public function test_admin_can_correct_completed_game_players_and_winner(): void
     {
         [$session, $members] = $this->sessionWithAttendees(5);
