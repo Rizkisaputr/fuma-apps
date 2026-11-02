@@ -44,13 +44,15 @@ class ReportService
     public function cashReport(string $from, string $to): array
     {
         $totals = $this->cashTotals($from, $to);
+        $transactions = $this->cashQuery($from, $to)
+            ->with(['cashCategory', 'playSessionMember.member'])
+            ->orderBy('transaction_date')
+            ->orderBy('id')
+            ->get();
 
         return [
-            'transactions' => $this->cashQuery($from, $to)
-                ->with(['cashCategory', 'playSessionMember.member'])
-                ->orderBy('transaction_date')
-                ->orderBy('id')
-                ->get(),
+            'transactions' => $transactions,
+            'displayRows' => $this->groupDuesForDisplay($transactions),
             'categoryTotals' => $this->cashQuery($from, $to)
                 ->join('cash_categories', 'cash_categories.id', '=', 'cash_transactions.cash_category_id')
                 ->selectRaw('cash_categories.id, cash_categories.name, cash_categories.type, cash_categories.icon, cash_categories.color, SUM(cash_transactions.amount) as total')
@@ -60,6 +62,40 @@ class ReportService
                 ->get(),
             ...$totals,
         ];
+    }
+
+    /** @return Collection<int, array{transaction: CashTransaction, transactions: Collection, amount: int, is_dues_group: bool}> */
+    private function groupDuesForDisplay(Collection $transactions): Collection
+    {
+        $groups = $transactions
+            ->filter(fn (CashTransaction $transaction): bool => $transaction->play_session_member_id !== null
+                && $transaction->play_session_id !== null
+                && $transaction->cashCategory?->code === 'dues')
+            ->groupBy('play_session_id');
+        $shownSessions = [];
+
+        return $transactions->flatMap(function (CashTransaction $transaction) use ($groups, &$shownSessions): array {
+            $isDues = $transaction->play_session_member_id !== null
+                && $transaction->play_session_id !== null
+                && $transaction->cashCategory?->code === 'dues';
+
+            if ($isDues && isset($shownSessions[$transaction->play_session_id])) {
+                return [];
+            }
+
+            if ($isDues) {
+                $shownSessions[$transaction->play_session_id] = true;
+            }
+
+            $members = $isDues ? $groups->get($transaction->play_session_id) : collect([$transaction]);
+
+            return [[
+                'transaction' => $transaction,
+                'transactions' => $members,
+                'amount' => (int) $members->sum('amount'),
+                'is_dues_group' => $isDues,
+            ]];
+        })->values();
     }
 
     /** @return Collection<string, array{income: int, expense: int, balance: int, count: int}> */

@@ -82,6 +82,40 @@ class ReportManagementTest extends TestCase
         );
     }
 
+    public function test_cash_report_groups_member_dues_by_session_and_keeps_member_details(): void
+    {
+        [$session, $members] = $this->cashFixture();
+        $attendance = PlaySessionMember::query()
+            ->where('play_session_id', $session->id)
+            ->where('member_id', $members[1]->id)
+            ->firstOrFail();
+        CashTransaction::query()->create([
+            'cash_category_id' => CashCategory::query()->where('code', 'dues')->firstOrFail()->id,
+            'play_session_id' => $session->id,
+            'play_session_member_id' => $attendance->id,
+            'transaction_date' => '2026-09-10',
+            'amount' => 50000,
+        ]);
+
+        $report = app(ReportService::class)->cashReport('2026-09-01', '2026-09-30');
+        $this->assertCount(4, $report['transactions']);
+        $this->assertCount(3, $report['displayRows']);
+        $dues = $report['displayRows']->first();
+        $this->assertTrue($dues['is_dues_group']);
+        $this->assertSame(100000, $dues['amount']);
+        $this->assertSame(['Ari', 'Bima'], $dues['transactions']->pluck('playSessionMember.member.name')->all());
+
+        Livewire::actingAs(User::factory()->create())
+            ->test(ReportIndex::class)
+            ->set('activeTab', 'cash')
+            ->set('dateFrom', '2026-09-01')
+            ->set('dateTo', '2026-09-30')
+            ->assertSee('Iuran 2 member')
+            ->assertSee('Rp100.000')
+            ->assertSee('Ari')
+            ->assertSee('Bima');
+    }
+
     public function test_session_without_attendance_or_games_is_still_reported(): void
     {
         PlaySession::query()->create(['play_date' => '2026-09-20', 'fee_amount' => 20000]);

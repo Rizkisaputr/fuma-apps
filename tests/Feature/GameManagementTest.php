@@ -149,7 +149,7 @@ class GameManagementTest extends TestCase
             ->assertDontSee('Set dimenangkan pada 15 poin');
     }
 
-    public function test_result_form_shows_the_player_names_for_each_team(): void
+    public function test_best_of_three_can_save_each_set_while_game_is_playing(): void
     {
         [$session, $members] = $this->sessionWithAttendees(4);
         $component = $this->sessionComponent($session);
@@ -158,9 +158,80 @@ class GameManagementTest extends TestCase
 
         $component->call('startGame', $game->id)
             ->call('openResultForm', $game->id)
-            ->assertSee('Catat Skor per Set')
-            ->assertSee('Pemain 1 & Pemain 2')
-            ->assertSee('Pemain 3 & Pemain 4');
+            ->set('setScores.0.team_a_score', 15)
+            ->set('setScores.0.team_b_score', 10)
+            ->call('saveSetResult')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('games', ['id' => $game->id, 'status' => 'playing', 'winner_team' => null]);
+        $this->assertDatabaseHas('game_sets', ['game_id' => $game->id, 'set_number' => 1, 'team_a_score' => 15, 'team_b_score' => 10]);
+        $component->assertSee('S1 15');
+
+        $component->call('openResultForm', $game->id)
+            ->set('setScores.1.team_a_score', 12)
+            ->set('setScores.1.team_b_score', 15)
+            ->call('saveSetResult')
+            ->assertHasNoErrors();
+        $this->assertDatabaseHas('games', ['id' => $game->id, 'status' => 'playing']);
+
+        $component->call('openResultForm', $game->id)
+            ->set('setScores.2.team_a_score', 15)
+            ->set('setScores.2.team_b_score', 9)
+            ->call('saveSetResult')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('games', ['id' => $game->id, 'status' => 'completed', 'winner_team' => 'A']);
+        $this->assertDatabaseCount('game_sets', 3);
+    }
+
+    public function test_rotation_game_can_finish_as_draw_after_two_saved_sets(): void
+    {
+        [$session, $members] = $this->sessionWithAttendees(4);
+        $component = $this->sessionComponent($session);
+        $this->saveGame($component, $members, true, Game::FORMAT_ROTATION);
+        $game = Game::query()->firstOrFail();
+
+        $component->call('startGame', $game->id)
+            ->call('openResultForm', $game->id)
+            ->set('setScores.0.team_a_score', 15)
+            ->set('setScores.0.team_b_score', 10)
+            ->call('saveSetResult')
+            ->call('openResultForm', $game->id)
+            ->set('setScores.1.team_a_score', 11)
+            ->set('setScores.1.team_b_score', 15)
+            ->call('saveSetResult')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('games', ['id' => $game->id, 'status' => 'completed', 'winner_team' => null]);
+        $this->assertDatabaseCount('game_sets', 2);
+    }
+
+    public function test_best_of_three_finishes_after_two_wins_and_rejects_invalid_set_score(): void
+    {
+        [$session, $members] = $this->sessionWithAttendees(4);
+        $component = $this->sessionComponent($session);
+        $this->saveGame($component, $members);
+        $game = Game::query()->firstOrFail();
+
+        $component->call('startGame', $game->id)
+            ->call('openResultForm', $game->id)
+            ->set('setScores.0.team_a_score', 15)
+            ->set('setScores.0.team_b_score', 14)
+            ->call('saveSetResult')
+            ->assertHasErrors('setScores.0.team_a_score');
+        $this->assertDatabaseCount('game_sets', 0);
+
+        $component->set('setScores.0.team_b_score', 10)
+            ->call('saveSetResult')
+            ->assertHasNoErrors()
+            ->call('openResultForm', $game->id)
+            ->set('setScores.1.team_a_score', 15)
+            ->set('setScores.1.team_b_score', 12)
+            ->call('saveSetResult')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('games', ['id' => $game->id, 'status' => 'completed', 'winner_team' => 'A']);
+        $this->assertDatabaseCount('game_sets', 2);
     }
 
     public function test_admin_can_correct_completed_game_players_and_winner(): void

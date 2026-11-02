@@ -54,7 +54,38 @@
             <section class='cash-summary-grid report-cash-summary'><article class='cash-summary cash-summary--income'><span>Total pemasukan</span><strong>Rp{{ number_format($cashReport['income'], 0, ',', '.') }}</strong></article><article class='cash-summary cash-summary--expense'><span>Total pengeluaran</span><strong>Rp{{ number_format($cashReport['expense'], 0, ',', '.') }}</strong></article><article class='cash-summary cash-summary--balance'><span>Saldo periode</span><strong>Rp{{ number_format($cashReport['balance'], 0, ',', '.') }}</strong></article></section>
             <section class='report-panel category-report-panel'><header><div><p class='eyebrow'>PER KATEGORI</p><h2>Rincian Kas</h2></div></header>
                 @if ($cashReport['categoryTotals']->isEmpty())<div class='report-empty'>Belum ada transaksi pada periode ini.</div>@else<div class='category-total-grid'>@foreach ($cashReport['categoryTotals'] as $category)<article><span class='category-icon' style='--category-color: {{ $category->color ?: '#65716a' }}'>{{ $category->icon ?: '•' }}</span><div><strong>{{ $category->name }}</strong><small>{{ $category->type === 'income' ? 'Pemasukan' : 'Pengeluaran' }}</small></div><b>Rp{{ number_format($category->total, 0, ',', '.') }}</b></article>@endforeach</div>@endif
-                @if ($cashReport['transactions']->isNotEmpty())<div class='report-table-wrap'><table class='report-table'><thead><tr><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th>Jenis</th><th>Nominal</th></tr></thead><tbody>@foreach ($cashReport['transactions'] as $transaction)<tr><td>{{ $transaction->transaction_date->translatedFormat('d M Y') }}</td><td>{{ $transaction->cashCategory->name }} @if($transaction->play_session_member_id)<span class='automatic-badge'>Otomatis</span>@endif</td><td>{{ $transaction->description ?: '-' }}</td><td>{{ $transaction->cashCategory->type === 'income' ? 'Pemasukan' : 'Pengeluaran' }}</td><td>Rp{{ number_format($transaction->amount, 0, ',', '.') }}</td></tr>@endforeach</tbody></table></div>@endif
+                @if ($cashReport['displayRows']->isNotEmpty())
+                    <div class='report-table-wrap'>
+                        <table class='report-table'>
+                            <thead><tr><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th>Jenis</th><th>Nominal</th></tr></thead>
+                            <tbody>
+                                @foreach ($cashReport['displayRows'] as $row)
+                                    @php($transaction = $row['transaction'])
+                                    <tr>
+                                        <td>{{ $transaction->transaction_date->translatedFormat('d M Y') }}</td>
+                                        <td>{{ $transaction->cashCategory->name }} @if ($row['is_dues_group'])<span class='automatic-badge'>Otomatis</span>@endif</td>
+                                        <td>
+                                            @if ($row['is_dues_group'])
+                                                <details class='dues-details'>
+                                                    <summary>Iuran {{ $row['transactions']->count() }} member</summary>
+                                                    <ul>
+                                                        @foreach ($row['transactions'] as $dues)
+                                                            <li><span>{{ $dues->playSessionMember?->member?->name ?? 'Member tidak tersedia' }}</span><strong>Rp{{ number_format($dues->amount, 0, ',', '.') }}</strong></li>
+                                                        @endforeach
+                                                    </ul>
+                                                </details>
+                                            @else
+                                                {{ $transaction->description ?: '-' }}
+                                            @endif
+                                        </td>
+                                        <td>{{ $transaction->cashCategory->type === 'income' ? 'Pemasukan' : 'Pengeluaran' }}</td>
+                                        <td>Rp{{ number_format($row['amount'], 0, ',', '.') }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
             </section>
         @else
             <section class='session-report-list'>

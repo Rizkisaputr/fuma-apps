@@ -1071,6 +1071,11 @@ a { color: inherit; text-decoration: none; }
 .report-table th { padding: .65rem .8rem; color: var(--muted); background: var(--cream-100); font-size: .65rem; text-align: left; text-transform: uppercase; }
 .report-table td { padding: .75rem .8rem; border-top: 1px solid var(--cream-200); font-size: .75rem; }
 .report-table td:last-child { text-align: right; white-space: nowrap; }
+.dues-details summary { color: var(--green-800); font-weight: 800; cursor: pointer; }
+.dues-details ul { min-width: 12rem; margin: .6rem 0 0; padding: 0; list-style: none; }
+.dues-details li { display: flex; justify-content: space-between; gap: 1rem; padding: .35rem 0; border-top: 1px solid var(--cream-200); }
+.dues-details li strong { white-space: nowrap; }
+.live-set-summary { margin: .6rem 0 0; color: var(--green-800); font-size: .8rem; }
 .report-empty { padding: 1.2rem; color: var(--muted); font-size: .78rem; text-align: center; }
 .report-empty--small { padding: .8rem; border: 1px dashed var(--cream-200); }
 .report-empty--large { min-height: 16rem; display: grid; place-content: center; }

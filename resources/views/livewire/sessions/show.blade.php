@@ -133,9 +133,12 @@
                         <span>VS</span>
                         <div><small>Tim B</small><strong>{{ $currentTeamB->pluck('member.name')->join(' & ') }}</strong></div>
                     </div>
+                    @if ($currentGame->gameSets->isNotEmpty())
+                        <p class='live-set-summary'>Skor tersimpan: <strong>{{ $currentGame->scoreSummary() }}</strong></p>
+                    @endif
                     <footer>
                         <span>Mulai {{ $currentGame->started_at?->timezone(config('app.display_timezone'))->translatedFormat('H:i') }} WIB</span>
-                        <div><button type='button' wire:click='openEditGameForm({{ $currentGame->id }})'>Koreksi pemain</button><button class='finish-game' type='button' wire:click='openResultForm({{ $currentGame->id }})'>Selesaikan Game</button></div>
+                        <div><button type='button' wire:click='openEditGameForm({{ $currentGame->id }})'>Koreksi pemain</button><button class='finish-game' type='button' wire:click='openResultForm({{ $currentGame->id }})'>{{ $currentGame->game_format === \App\Models\Game::FORMAT_SINGLE_SET ? 'Selesaikan Game' : 'Catat Set '.($currentGame->gameSets->count() + 1) }}</button></div>
                     </footer>
                 </article>
             @else
@@ -332,7 +335,9 @@
                     <div><p class='eyebrow'>HASIL GAME {{ $resultGame->game_number }}</p><h2 id='result-form-title'>{{ $resultGame->status === 'completed' ? 'Hasil Pertandingan' : ($resultGame->game_format === \App\Models\Game::FORMAT_SINGLE_SET ? 'Pilih Pemenang' : 'Catat Skor per Set') }}</h2></div>
                     <button class='modal-close' type='button' wire:click='closeResultForm' aria-label='Tutup formulir'>&times;</button>
                 </header>
-                <form wire:submit='saveResult'>
+                @php($isPlayingSet = $resultGame->status === 'playing' && $resultGame->game_format !== \App\Models\Game::FORMAT_SINGLE_SET)
+                @php($nextSetIndex = $resultGame->gameSets->count())
+                <form wire:submit='{{ $isPlayingSet ? 'saveSetResult' : 'saveResult' }}'>
                     @if ($resultGame->status === 'completed')
                         @if ($resultGame->winner_team)
                             <div class='result-celebration' role='status'>
@@ -353,6 +358,9 @@
                         @endif
                     @endif
                     <div class='game-format-summary'><span>Format</span><strong>{{ $resultGame->formatLabel() }}</strong></div>
+                    @if ($isPlayingSet && $resultGame->gameSets->isNotEmpty())
+                        <p class='form-help'>Set tersimpan: {{ $resultGame->scoreSummary() }}. Skor yang sudah tersimpan dapat dikoreksi setelah game selesai.</p>
+                    @endif
                     @if ($resultGame->game_format === \App\Models\Game::FORMAT_SINGLE_SET)
                         <fieldset class='winner-options'>
                             <legend>Tim pemenang</legend>
@@ -372,6 +380,7 @@
                         @endif
                         <div class='set-score-list'>
                             @foreach ($setScores as $index => $setScore)
+                                @if (! $isPlayingSet || $index === $nextSetIndex)
                                 <fieldset class='set-score-row' wire:key='set-score-{{ $index }}'>
                                     <legend>Set {{ $index + 1 }} {{ $resultGame->game_format === \App\Models\Game::FORMAT_BEST_OF_THREE && $index === 2 ? '· Rubber bila 1–1' : '' }}</legend>
                                     <label class='member-field'><span><small>Tim A</small><strong>{{ $resultTeamAName }}</strong></span><input type='number' min='0' max='{{ $resultGame->point_target + 9 }}' wire:model='setScores.{{ $index }}.team_a_score' placeholder='0'></label>
@@ -380,13 +389,14 @@
                                     @error('setScores.'.$index.'.team_a_score') <small class='field-error'>{{ $message }}</small> @enderror
                                     @error('setScores.'.$index.'.team_b_score') <small class='field-error'>{{ $message }}</small> @enderror
                                 </fieldset>
+                                @endif
                             @endforeach
                         </div>
                     @endif
                     @error('result') <small class='field-error'>{{ $message }}</small> @enderror
                     <div class='modal-actions'>
                         <button class='cancel-action' type='button' wire:click='closeResultForm'>Batal</button>
-                        <button class='primary-action' type='submit'>Simpan Hasil</button>
+                        <button class='primary-action' type='submit'>{{ $isPlayingSet ? 'Simpan Set '.($nextSetIndex + 1) : 'Simpan Hasil' }}</button>
                     </div>
                 </form>
             </section>

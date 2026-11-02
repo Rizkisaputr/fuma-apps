@@ -520,6 +520,102 @@ class Show extends Component
         $this->resetResultForm();
     }
 
+    public function saveSetResult(): void
+    {
+        $this->resetValidation(['result', 'setScores']);
+
+        DB::transaction(function (): void {
+            $game = Game::query()
+                ->where('play_session_id', $this->sessionId)
+                ->lockForUpdate()
+                ->findOrFail($this->resultGameId);
+
+            if ($game->status !== 'playing' || $game->game_format === Game::FORMAT_SINGLE_SET) {
+                $this->addError('result', 'Set hanya dapat dicatat pada game yang sedang berlangsung.');
+
+                return;
+            }
+
+            $savedSets = $game->gameSets()->get();
+            $setIndex = $savedSets->count();
+            $maximumSets = match ($game->game_format) {
+                Game::FORMAT_ONE_SET => 1,
+                Game::FORMAT_ROTATION => 2,
+                default => 3,
+            };
+
+            if ($setIndex >= $maximumSets) {
+                $this->addError('result', 'Semua set game ini sudah dicatat.');
+
+                return;
+            }
+
+            $this->validate([
+                'setScores.'.$setIndex.'.team_a_score' => ['required', 'integer', 'min:0', 'max:99'],
+                'setScores.'.$setIndex.'.team_b_score' => ['required', 'integer', 'min:0', 'max:99'],
+            ]);
+
+            $teamA = (int) $this->setScores[$setIndex]['team_a_score'];
+            $teamB = (int) $this->setScores[$setIndex]['team_b_score'];
+
+            if (! $this->isValidSetScore($game, $teamA, $teamB)) {
+                $this->addError('setScores.'.$setIndex.'.team_a_score', 'Skor set tidak sah. Pemenang harus mencapai target poin dan unggul sesuai aturan deuce.');
+
+                return;
+            }
+
+            $winner = $teamA > $teamB ? 'A' : 'B';
+            $game->gameSets()->create([
+                'set_number' => $setIndex + 1,
+                'team_a_score' => $teamA,
+                'team_b_score' => $teamB,
+                'winner_team' => $winner,
+            ]);
+
+            $winners = $savedSets->pluck('winner_team')->push($winner);
+            $teamAWins = $winners->filter(fn (string $team): bool => $team === 'A')->count();
+            $teamBWins = $winners->filter(fn (string $team): bool => $team === 'B')->count();
+            $isFinished = $game->game_format === Game::FORMAT_ONE_SET
+                || ($game->game_format === Game::FORMAT_ROTATION && $setIndex === 1)
+                || ($game->game_format === Game::FORMAT_BEST_OF_THREE && ($teamAWins === 2 || $teamBWins === 2));
+
+            if ($isFinished) {
+                $game->update([
+                    'status' => 'completed',
+                    'winner_team' => $teamAWins === $teamBWins ? null : ($teamAWins > $teamBWins ? 'A' : 'B'),
+                    'team_a_score' => null,
+                    'team_b_score' => null,
+                    'completed_at' => now(),
+                ]);
+            }
+
+            session()->flash('session-message', $isFinished
+                ? 'Set terakhir disimpan dan hasil game ditentukan.'
+                : 'Skor set '.($setIndex + 1).' disimpan. Game masih berlangsung.');
+        });
+
+        if ($this->getErrorBag()->isEmpty()) {
+            $this->resetResultForm();
+        }
+    }
+
+    private function isValidSetScore(Game $game, int $teamA, int $teamB): bool
+    {
+        if ($teamA === $teamB || max($teamA, $teamB) < $game->point_target) {
+            return false;
+        }
+
+        $winningScore = max($teamA, $teamB);
+        $losingScore = min($teamA, $teamB);
+        $deuceScore = $game->point_target - 1;
+        $maximumScore = $game->point_target + 9;
+
+        return ($winningScore === $game->point_target && $losingScore < $deuceScore)
+            || ($winningScore > $game->point_target && $winningScore < $maximumScore
+                && $losingScore >= $deuceScore && $winningScore - $losingScore === 2)
+            || ($winningScore === $maximumScore && in_array($losingScore, [$maximumScore - 2, $maximumScore - 1], true));
+    }
+
     public function startSession(): void
     {
         $session = $this->playSession();
