@@ -1,9 +1,11 @@
+
 <?php
 
 namespace App\Providers;
 
 use App\Models\ApplicationSetting;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -22,6 +24,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Force HTTPS untuk production agar Livewire
+        // tidak mengirim request melalui HTTP.
+        if ($this->app->environment('production')) {
+            URL::forceScheme('https');
+        }
+
+        // Pertahankan pengaturan aplikasi Fuma.
         View::composer('*', function ($view): void {
             $settings = Schema::hasTable('application_settings')
                 ? ApplicationSetting::current()
