@@ -6,6 +6,7 @@ use App\Models\CashCategory;
 use App\Models\CashTransaction;
 use App\Services\ReportService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
@@ -190,13 +191,37 @@ class Index extends Component
         $from = $this->validDate($this->dateFrom) ? $this->dateFrom : null;
         $to = $this->validDate($this->dateTo) ? $this->dateTo : null;
         $totals = $reports->cashTotals($from, $to);
+        $cashQuery = $reports->cashQuery($from, $to);
+        $duesQuery = (clone $cashQuery)
+            ->whereNotNull('play_session_id')
+            ->whereNotNull('play_session_member_id')
+            ->whereHas('cashCategory', fn (Builder $query) => $query->where('code', 'dues'));
+
+        $transactions = $cashQuery
+            ->where(fn (Builder $query) => $query
+                ->whereNotIn('id', (clone $duesQuery)->select('id'))
+                ->orWhereIn('id', (clone $duesQuery)->selectRaw('MAX(id)')->groupBy('play_session_id')))
+            ->with('cashCategory')
+            ->orderByDesc('transaction_date')
+            ->orderByDesc('id')
+            ->paginate(12);
+
+        $duesSessionIds = $transactions->getCollection()
+            ->where('cashCategory.code', 'dues')
+            ->whereNotNull('play_session_member_id')
+            ->whereNotNull('play_session_id')
+            ->pluck('play_session_id');
+
+        $duesBySession = $duesQuery
+            ->whereIn('play_session_id', $duesSessionIds)
+            ->with('playSessionMember.member')
+            ->orderBy('id')
+            ->get()
+            ->groupBy('play_session_id');
 
         return view('livewire.cash.index', [
-            'transactions' => $reports->cashQuery($from, $to)
-                ->with(['cashCategory', 'playSessionMember.member'])
-                ->orderByDesc('transaction_date')
-                ->orderByDesc('id')
-                ->paginate(12),
+            'transactions' => $transactions,
+            'duesBySession' => $duesBySession,
             'categories' => CashCategory::query()
                 ->where('is_active', true)
                 ->where('type', $this->transactionType)

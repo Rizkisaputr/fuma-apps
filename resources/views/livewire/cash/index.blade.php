@@ -38,12 +38,19 @@
                     <thead><tr><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th>Jenis</th><th>Nominal</th><th><span class='sr-only'>Aksi</span></th></tr></thead>
                     <tbody>
                         @foreach ($transactions as $transaction)
+                            @php($dues = $transaction->play_session_member_id && $transaction->cashCategory->code === 'dues' ? $duesBySession->get($transaction->play_session_id) : null)
                             <tr wire:key='cash-row-{{ $transaction->id }}'>
                                 <td>{{ $transaction->transaction_date->translatedFormat('d M Y') }}</td>
                                 <td><span class='category-icon' style='--category-color: {{ $transaction->cashCategory->color ?: ($transaction->cashCategory->type === 'income' ? '#2a8a5d' : '#b6654a') }}'>{{ $transaction->cashCategory->icon ?: '•' }}</span><strong>{{ $transaction->cashCategory->name }}</strong>@if ($transaction->play_session_member_id)<span class='automatic-badge'>Otomatis</span>@endif</td>
-                                <td>{{ $transaction->description ?: '-' }}</td>
+                                <td>
+                                    @if ($dues)
+                                        <x-dues-details :transactions='$dues' />
+                                    @else
+                                        {{ $transaction->description ?: '-' }}
+                                    @endif
+                                </td>
                                 <td><span class='cash-type cash-type--{{ $transaction->cashCategory->type }}'>{{ $transaction->cashCategory->type === 'income' ? 'Pemasukan' : 'Pengeluaran' }}</span></td>
-                                <td class='cash-amount cash-amount--{{ $transaction->cashCategory->type }}'>{{ $transaction->cashCategory->type === 'income' ? '+' : '-' }}Rp{{ number_format($transaction->amount, 0, ',', '.') }}</td>
+                                <td class='cash-amount cash-amount--{{ $transaction->cashCategory->type }}'>{{ $transaction->cashCategory->type === 'income' ? '+' : '-' }}Rp{{ number_format($dues?->sum('amount') ?? $transaction->amount, 0, ',', '.') }}</td>
                                 <td>
                                     @if (! $transaction->play_session_id && ! $transaction->play_session_member_id)
                                         <div class='row-actions'><button type='button' wire:click='editTransaction({{ $transaction->id }})'>Edit</button></div>
@@ -57,10 +64,15 @@
 
             <div class='cash-card-list'>
                 @foreach ($transactions as $transaction)
+                    @php($dues = $transaction->play_session_member_id && $transaction->cashCategory->code === 'dues' ? $duesBySession->get($transaction->play_session_id) : null)
                     <article class='cash-card' wire:key='cash-card-{{ $transaction->id }}'>
                         <header><div><span class='category-icon' style='--category-color: {{ $transaction->cashCategory->color ?: ($transaction->cashCategory->type === 'income' ? '#2a8a5d' : '#b6654a') }}'>{{ $transaction->cashCategory->icon ?: '•' }}</span><strong>{{ $transaction->cashCategory->name }}</strong>@if ($transaction->play_session_member_id)<span class='automatic-badge'>Otomatis</span>@endif</div><span>{{ $transaction->transaction_date->translatedFormat('d M Y') }}</span></header>
-                        <p>{{ $transaction->description ?: 'Tanpa keterangan' }}</p>
-                        <footer><span class='cash-type cash-type--{{ $transaction->cashCategory->type }}'>{{ $transaction->cashCategory->type === 'income' ? 'Pemasukan' : 'Pengeluaran' }}</span><strong class='cash-amount--{{ $transaction->cashCategory->type }}'>{{ $transaction->cashCategory->type === 'income' ? '+' : '-' }}Rp{{ number_format($transaction->amount, 0, ',', '.') }}</strong></footer>
+                        @if ($dues)
+                            <x-dues-details :transactions='$dues' />
+                        @else
+                            <p>{{ $transaction->description ?: 'Tanpa keterangan' }}</p>
+                        @endif
+                        <footer><span class='cash-type cash-type--{{ $transaction->cashCategory->type }}'>{{ $transaction->cashCategory->type === 'income' ? 'Pemasukan' : 'Pengeluaran' }}</span><strong class='cash-amount--{{ $transaction->cashCategory->type }}'>{{ $transaction->cashCategory->type === 'income' ? '+' : '-' }}Rp{{ number_format($dues?->sum('amount') ?? $transaction->amount, 0, ',', '.') }}</strong></footer>
                         @if (! $transaction->play_session_id && ! $transaction->play_session_member_id)
                             <div class='row-actions cash-card-actions'><button type='button' wire:click='editTransaction({{ $transaction->id }})'>Edit transaksi</button></div>
                         @endif

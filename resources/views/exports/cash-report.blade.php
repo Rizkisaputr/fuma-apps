@@ -3,4 +3,27 @@
 </style></head><body><div class='page-number'>{{ $appSettings->app_name }} - Laporan Kas</div><div class='report-brand'><img src='{{ $appSettings->logoAbsolutePath() }}' alt=''><h1>Laporan Kas {{ $appSettings->app_name }}</h1></div><p class='period'>Periode {{ \Illuminate\Support\Carbon::parse($from)->translatedFormat('d F Y') }} sampai {{ \Illuminate\Support\Carbon::parse($to)->translatedFormat('d F Y') }}</p>
 <table class='summary'><tr><td><span>Total pemasukan</span><strong>Rp{{ number_format($report['income'],0,',','.') }}</strong></td><td><span>Total pengeluaran</span><strong>Rp{{ number_format($report['expense'],0,',','.') }}</strong></td><td><span>Saldo periode</span><strong>Rp{{ number_format($report['balance'],0,',','.') }}</strong></td></tr></table>
 <h2 class='section'>Ringkasan per kategori</h2><table class='data'><thead><tr><th>Kategori</th><th>Jenis</th><th class='amount'>Total</th></tr></thead><tbody>@forelse($report['categoryTotals'] as $category)<tr><td>{{ $category->name }}</td><td>{{ $category->type==='income'?'Pemasukan':'Pengeluaran' }}</td><td class='amount'>Rp{{ number_format($category->total,0,',','.') }}</td></tr>@empty<tr><td colspan='3' class='muted'>Tidak ada transaksi.</td></tr>@endforelse</tbody></table>
-<h2 class='section'>Rincian transaksi</h2><table class='data'><thead><tr><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th>Sumber</th><th class='amount'>Nominal</th></tr></thead><tbody>@forelse($report['transactions'] as $transaction)<tr><td>{{ $transaction->transaction_date->format('d/m/Y') }}</td><td>{{ $transaction->cashCategory->name }}</td><td>{{ $transaction->description?:'-' }}</td><td>{{ $transaction->play_session_member_id?'Iuran otomatis':'Manual' }}</td><td class='amount'>{{ $transaction->cashCategory->type==='income'?'+':'-' }}Rp{{ number_format($transaction->amount,0,',','.') }}</td></tr>@empty<tr><td colspan='5' class='muted'>Tidak ada transaksi.</td></tr>@endforelse</tbody></table></body></html>
+<h2 class='section'>Rincian transaksi</h2>
+<table class='data'>
+    <thead><tr><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th>Sumber</th><th class='amount'>Nominal</th></tr></thead>
+    <tbody>
+        @forelse ($report['displayRows'] as $row)
+            @php($transaction = $row['transaction'])
+            <tr>
+                <td>{{ $transaction->transaction_date->format('d/m/Y') }}</td>
+                <td>{{ $transaction->cashCategory->name }}</td>
+                <td>
+                    @if ($row['is_dues_group'])
+                        Iuran {{ $row['transactions']->count() }} member
+                    @else
+                        {{ $transaction->description ?: '-' }}
+                    @endif
+                </td>
+                <td>{{ $transaction->play_session_member_id ? 'Iuran otomatis' : 'Manual' }}</td>
+                <td class='amount'>{{ $transaction->cashCategory->type === 'income' ? '+' : '-' }}Rp{{ number_format($row['amount'], 0, ',', '.') }}</td>
+            </tr>
+        @empty
+            <tr><td colspan='5' class='muted'>Tidak ada transaksi.</td></tr>
+        @endforelse
+    </tbody>
+</table></body></html>

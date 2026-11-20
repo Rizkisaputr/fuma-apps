@@ -318,6 +318,61 @@ class CashManagementTest extends TestCase
             ->assertViewHas('transactions', fn ($transactions) => $transactions->total() === 2);
     }
 
+    public function test_cash_history_groups_dues_by_session_before_pagination(): void
+    {
+        $duesCategory = CashCategory::query()->where('code', 'dues')->firstOrFail();
+        $sponsorship = CashCategory::query()->where('name', 'Sponsorship')->firstOrFail();
+        [$session, $firstAttendance] = $this->attendanceFixture(name: 'Member Pertama');
+        [$otherSession, $otherAttendance] = $this->attendanceFixture(name: 'Member Sesi Lain');
+
+        $attendances = collect([$firstAttendance]);
+        for ($number = 2; $number <= 11; $number++) {
+            $member = Member::query()->create(['name' => "Member $number", 'skill_level' => 'menengah']);
+            $attendances->push($session->sessionMembers()->create([
+                'member_id' => $member->id,
+                'attended_at' => now(),
+                'fee_amount' => 15000,
+            ]));
+        }
+
+        foreach ($attendances->concat([$otherAttendance]) as $attendance) {
+            CashTransaction::query()->create([
+                'cash_category_id' => $duesCategory->id,
+                'play_session_id' => $attendance->play_session_id,
+                'play_session_member_id' => $attendance->id,
+                'transaction_date' => '2026-10-10',
+                'amount' => 15000,
+            ]);
+        }
+
+        CashTransaction::query()->create([
+            'cash_category_id' => $sponsorship->id,
+            'transaction_date' => '2026-10-11',
+            'amount' => 50000,
+            'description' => 'Sponsor utama',
+        ]);
+
+        Livewire::actingAs(User::factory()->create())
+            ->test(CashIndex::class)
+            ->assertViewHas('transactions', fn ($transactions) => $transactions->total() === 3 && ! $transactions->hasPages())
+            ->assertViewHas('duesBySession', fn ($groups) => $groups[$session->id]->count() === 11
+                && $groups[$otherSession->id]->count() === 1)
+            ->assertSeeHtml('<summary>Iuran 11 member</summary>')
+            ->assertSee('+Rp165.000')
+            ->assertSee('Member Pertama')
+            ->assertSee('Member 11')
+            ->assertSee('Member Sesi Lain')
+            ->assertSee('Sponsor utama')
+            ->set('dateFrom', '2026-10-10')
+            ->set('dateTo', '2026-10-10')
+            ->call('applyFilters')
+            ->assertHasNoErrors()
+            ->assertViewHas('transactions', fn ($transactions) => $transactions->total() === 2)
+            ->assertViewHas('totalIncome', 180000)
+            ->assertSee('Iuran 11 member')
+            ->assertDontSee('Sponsor utama');
+    }
+
     /** @return array{PlaySession, PlaySessionMember} */
     private function attendanceFixture(int $fee = 15000, string $date = '2026-10-10', string $name = 'Ari'): array
     {

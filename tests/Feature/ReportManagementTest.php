@@ -95,6 +95,7 @@ class ReportManagementTest extends TestCase
             'play_session_member_id' => $attendance->id,
             'transaction_date' => '2026-09-10',
             'amount' => 50000,
+            'description' => 'Iuran Bima',
         ]);
 
         $report = app(ReportService::class)->cashReport('2026-09-01', '2026-09-30');
@@ -114,6 +115,16 @@ class ReportManagementTest extends TestCase
             ->assertSee('Rp100.000')
             ->assertSee('Ari')
             ->assertSee('Bima');
+
+        $this->view('exports.cash-report', [
+            'report' => $report,
+            'from' => '2026-09-01',
+            'to' => '2026-09-30',
+        ])
+            ->assertSee('Iuran 2 member')
+            ->assertSee('+Rp100.000')
+            ->assertDontSee('Iuran Ari')
+            ->assertDontSee('Iuran Bima');
     }
 
     public function test_session_without_attendance_or_games_is_still_reported(): void
@@ -238,6 +249,7 @@ class ReportManagementTest extends TestCase
             'play_session_member_id' => $attendances->first()->id,
             'transaction_date' => '2026-09-10',
             'amount' => 50000,
+            'description' => 'Iuran Ari',
         ]);
         CashTransaction::query()->create([
             'cash_category_id' => $sponsorship->id,

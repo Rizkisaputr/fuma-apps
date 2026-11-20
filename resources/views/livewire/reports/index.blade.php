@@ -66,14 +66,7 @@
                                         <td>{{ $transaction->cashCategory->name }} @if ($row['is_dues_group'])<span class='automatic-badge'>Otomatis</span>@endif</td>
                                         <td>
                                             @if ($row['is_dues_group'])
-                                                <details class='dues-details'>
-                                                    <summary>Iuran {{ $row['transactions']->count() }} member</summary>
-                                                    <ul>
-                                                        @foreach ($row['transactions'] as $dues)
-                                                            <li><span>{{ $dues->playSessionMember?->member?->name ?? 'Member tidak tersedia' }}</span><strong>Rp{{ number_format($dues->amount, 0, ',', '.') }}</strong></li>
-                                                        @endforeach
-                                                    </ul>
-                                                </details>
+                                                <x-dues-details :transactions="$row['transactions']" />
                                             @else
                                                 {{ $transaction->description ?: '-' }}
                                             @endif
